@@ -1,21 +1,21 @@
 """Image generation behind a pluggable interface.
 
-Claude cannot generate images, so this is the one place that talks to an
-external image model. The ``StubImageGenerator`` renders the prompt text onto a
-deterministic colored card with Pillow, so the entire game runs offline with no
-API keys. ``FalImageGenerator`` calls fal.ai FLUX-schnell over HTTP.
+This is the one place that talks to an external image model. The
+``StubImageGenerator`` renders the prompt text onto a deterministic colored card
+with Pillow, so the entire game runs offline with no API keys.
+``OpenAIImageGenerator`` calls OpenAI's image API (gpt-image-1).
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import io
 import textwrap
 from dataclasses import dataclass
 from typing import Protocol
 
-import httpx
 from PIL import Image, ImageDraw
 
 
@@ -72,44 +72,46 @@ class StubImageGenerator:
 
 
 # ---------------------------------------------------------------------------
-# fal.ai FLUX-schnell
+# OpenAI image API (gpt-image-1)
 # ---------------------------------------------------------------------------
 
 
-class FalImageGenerator:
-    """Calls fal.ai FLUX-schnell. Needs FAL_KEY. ~1-2s per image."""
+class OpenAIImageGenerator:
+    """Calls OpenAI's image API. Needs OPENAI_API_KEY. Returns PNG bytes."""
 
-    ENDPOINT = "https://fal.run/fal-ai/flux/schnell"
-
-    def __init__(self, api_key: str, *, image_size: str = "square") -> None:
+    def __init__(
+        self, api_key: str, *, model: str = "gpt-image-1", size: str = "1024x1024"
+    ) -> None:
         if not api_key:
-            raise ValueError("FalImageGenerator requires a fal.ai API key")
-        self._api_key = api_key
-        self._image_size = image_size
+            raise ValueError("OpenAIImageGenerator requires an OpenAI API key")
+        from openai import AsyncOpenAI  # lazy: stub path needs no SDK at runtime
+
+        self._client = AsyncOpenAI(api_key=api_key)
+        self._model = model
+        self._size = size
 
     async def generate(self, prompt: str, *, seed: int | None = None) -> GeneratedImage:
-        payload: dict[str, object] = {
-            "prompt": prompt,
-            "image_size": self._image_size,
-            "num_images": 1,
-        }
-        if seed is not None:
-            payload["seed"] = seed
-        headers = {"Authorization": f"Key {self._api_key}"}
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(self.ENDPOINT, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-            url = data["images"][0]["url"]
-            img = await client.get(url)
-            img.raise_for_status()
-            content_type = img.headers.get("content-type", "image/png")
-            return GeneratedImage(image_bytes=img.content, content_type=content_type)
+        resp = await self._client.images.generate(
+            model=self._model,
+            prompt=prompt,
+            size=self._size,
+            n=1,
+        )
+        b64 = resp.data[0].b64_json
+        return GeneratedImage(image_bytes=base64.b64decode(b64), content_type="image/png")
 
 
-def build_image_generator(provider: str, *, fal_key: str = "") -> ImageGenerator:
-    if provider == "fal":
-        return FalImageGenerator(fal_key)
+def build_image_generator(
+    provider: str,
+    *,
+    openai_api_key: str = "",
+    openai_image_model: str = "gpt-image-1",
+    openai_image_size: str = "1024x1024",
+) -> ImageGenerator:
+    if provider == "openai":
+        return OpenAIImageGenerator(
+            openai_api_key, model=openai_image_model, size=openai_image_size
+        )
     if provider == "stub":
         return StubImageGenerator()
     raise ValueError(f"Unknown image provider: {provider!r}")

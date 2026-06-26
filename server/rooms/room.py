@@ -12,11 +12,22 @@ import math
 import time
 import uuid
 
+from ..history.summary import (
+    GameRecorder,
+    GameSummary,
+    ParticipantSnapshot,
+    ResultSnapshot,
+    RoundSnapshot,
+)
 from ..realtime import protocol as p
 from ..realtime.connection import Connection
-from ..services.image_gen import GeneratedImage, ImageGenerator, generate_many
+from ..services.image_gen import GeneratedImage, ImageGenerator
 from ..services.judge import Judge, JudgeInput
-from ..services.seed_prompts import random_seed_prompt
+from ..services.scoring import compose_score
+from ..services.seed_prompts import (
+    TargetPromptGenerator,
+    difficulty_for_round,
+)
 from .state import (
     GameState,
     Phase,
@@ -38,23 +49,39 @@ class Room:
         total_rounds: int,
         round_seconds: int,
         max_result_concurrency: int = 4,
+        target_difficulty: str = "medium",
+        recorder: GameRecorder | None = None,
     ) -> None:
         self.code = code
         self.state = GameState(total_rounds=total_rounds, round_seconds=round_seconds)
         self._generator = generator
         self._judge = judge
         self._concurrency = max_result_concurrency
+        self._difficulty = target_difficulty
+        self._target_prompts = TargetPromptGenerator()
+        self._recorder = recorder
 
         self._connections: dict[str, Connection] = {}
         self._images: dict[str, GeneratedImage] = {}
+        self._round_history: list[RoundSnapshot] = []
         self._submission_event = asyncio.Event()
         self._game_task: asyncio.Task | None = None
+        self._sem = asyncio.Semaphore(max_result_concurrency)
+        self._round_start_mono: float = 0.0
+        self._inflight: list[asyncio.Task] = []
         self.last_active = time.time()
 
     # -- roster / connections ----------------------------------------------
-    async def connect(self, name: str, connection: Connection) -> str:
+    async def connect(
+        self,
+        name: str,
+        connection: Connection,
+        *,
+        user_id: str | None = None,
+        picture_url: str | None = None,
+    ) -> str:
         player_id = uuid.uuid4().hex[:8]
-        player = Player(id=player_id, name=name)
+        player = Player(id=player_id, name=name, user_id=user_id, picture_url=picture_url)
         self.state.add_player(player)
         self._connections[player_id] = connection
         self.last_active = time.time()
@@ -104,11 +131,24 @@ class Room:
         if self.state.phase != Phase.PROMPTING or rnd is None:
             await self._send(player_id, p.ErrorMessage(detail="Not accepting prompts right now."))
             return
-        rnd.submissions[player_id] = Submission(player_id=player_id, prompt=prompt)
+        if player_id in rnd.submissions:
+            await self._send(player_id, p.ErrorMessage(detail="You already submitted this round."))
+            return
+
+        # Fraction of the round's time already elapsed: 0 = instant, 1 = buzzer.
+        elapsed = asyncio.get_event_loop().time() - self._round_start_mono
+        fraction = elapsed / max(1, self.state.round_seconds)
+        submission = Submission(player_id=player_id, prompt=prompt, submit_fraction=fraction)
+        rnd.submissions[player_id] = submission
+
+        # Generate + judge this player's image now, in the background. The result
+        # is NOT revealed until the round ends (revealing early enables copying).
+        self._inflight.append(asyncio.create_task(self._process_submission(rnd, submission)))
+
         await self._send(player_id, p.PromptAccepted())
         await self._broadcast(
-            p.SubmissionCount(
-                submitted=len(rnd.submissions),
+            p.SubmissionStatus(
+                submitted_player_ids=list(rnd.submissions.keys()),
                 total=len(self.state.connected_players()),
             )
         )
@@ -126,6 +166,7 @@ class Room:
         self.state.current_round = None
         self.state.deadline_ts = None
         self._images.clear()
+        self._round_history.clear()
         await self._broadcast(self._room_state())
 
     # -- the game loop ------------------------------------------------------
@@ -136,24 +177,83 @@ class Room:
                 break
             await self._generate_target(round_num)
             await self._prompting_phase()
-            await self._generate_results()
-            await self._judging_phase()
+            await self._scoring_phase()
             await self._reveal_phase(round_num)
 
         self.state.phase = Phase.GAME_OVER
         await self._broadcast(self._phase_changed())
-        winner = standings(self.state)
+        ranked = standings(self.state)
         await self._broadcast(
             p.GameOver(
                 standings=self._player_views(),
-                winner_id=winner[0].id if winner else None,
+                winner_id=ranked[0].id if ranked else None,
             )
+        )
+        await self._record_game(ranked)
+
+    async def _record_game(self, ranked: list[Player]) -> None:
+        if self._recorder is None or not self._round_history:
+            return
+        participants = [
+            ParticipantSnapshot(
+                player_id=pl.id,
+                user_id=pl.user_id,
+                display_name=pl.name,
+                final_score=pl.score,
+                placement=i + 1,
+            )
+            for i, pl in enumerate(ranked)
+        ]
+        summary = GameSummary(
+            code=self.code,
+            total_rounds=self.state.total_rounds,
+            round_seconds=self.state.round_seconds,
+            winner_name=ranked[0].name if ranked else None,
+            participants=participants,
+            rounds=self._round_history,
+        )
+        if not summary.has_authenticated_participant():
+            return  # nothing to attribute; skip to avoid clutter
+        try:
+            await self._recorder.record(summary)
+        except Exception:  # noqa: BLE001 - persistence must never break a game
+            pass
+
+    def _snapshot_round(self, round_num: int, rnd: RoundResult) -> RoundSnapshot:
+        target = self._images[rnd.target_image_id]
+        results: list[ResultSnapshot] = []
+        for pid, sub in rnd.submissions.items():
+            player = self.state.players.get(pid)
+            image = self._images.get(sub.image_id) if sub.image_id else None
+            b = sub.breakdown
+            results.append(
+                ResultSnapshot(
+                    player_id=pid,
+                    user_id=player.user_id if player else None,
+                    display_name=player.name if player else pid,
+                    prompt=sub.prompt,
+                    score=b.final if b else 0,
+                    rationale=b.rationale if b else "",
+                    image_bytes=image.image_bytes if image else None,
+                    content_type=image.content_type if image else "image/png",
+                )
+            )
+        return RoundSnapshot(
+            round_num=round_num,
+            target_image_bytes=target.image_bytes,
+            target_content_type=target.content_type,
+            results=results,
         )
 
     async def _generate_target(self, round_num: int) -> None:
         self.state.phase = Phase.GENERATING_TARGET
         await self._broadcast(self._phase_changed())
-        seed_prompt = random_seed_prompt()
+        difficulty = (
+            difficulty_for_round(round_num, self.state.total_rounds)
+            if self._difficulty == "ramp"
+            else self._difficulty
+        )
+        seed_prompt = self._target_prompts.generate(difficulty)
         image = await self._generator.generate(seed_prompt)
         target_id = self._store_image(image)
         self.state.current_round = RoundResult(target_image_id=target_id)
@@ -162,8 +262,10 @@ class Room:
     async def _prompting_phase(self) -> None:
         self.state.phase = Phase.PROMPTING
         self._submission_event.clear()
+        self._inflight = []
         loop = asyncio.get_event_loop()
-        mono_deadline = loop.time() + self.state.round_seconds
+        self._round_start_mono = loop.time()
+        mono_deadline = self._round_start_mono + self.state.round_seconds
         wall_deadline = time.time() + self.state.round_seconds
         self.state.deadline_ts = wall_deadline
         await self._broadcast(self._phase_changed())
@@ -183,49 +285,51 @@ class Room:
                 pass
             self._submission_event.clear()
 
-    async def _generate_results(self) -> None:
-        self.state.phase = Phase.GENERATING_RESULTS
-        await self._broadcast(self._phase_changed())
-        rnd = self.state.current_round
-        assert rnd is not None
-        prompts = {pid: sub.prompt for pid, sub in rnd.submissions.items()}
-        images = await generate_many(self._generator, prompts, concurrency=self._concurrency)
-        for pid, image in images.items():
-            image_id = self._store_image(image)
-            rnd.submissions[pid].image_id = image_id
-
-    async def _judging_phase(self) -> None:
-        self.state.phase = Phase.JUDGING
-        await self._broadcast(self._phase_changed())
-        rnd = self.state.current_round
-        assert rnd is not None
-
-        judge_inputs: list[JudgeInput] = []
-        for pid, sub in rnd.submissions.items():
-            if sub.image_id is None:
-                continue
-            player = self.state.players.get(pid)
-            image = self._images[sub.image_id]
-            judge_inputs.append(
-                JudgeInput(
-                    player_id=pid,
-                    player_name=player.name if player else pid,
-                    prompt=sub.prompt,
-                    image_bytes=image.image_bytes,
-                    content_type=image.content_type,
+    async def _process_submission(self, rnd: RoundResult, submission: Submission) -> None:
+        """Generate the player's image and judge it vs the target, then compose
+        the final score (similarity + speed bonus). Runs in the background the
+        moment a prompt is submitted; nothing here is broadcast (anti-cheat)."""
+        async with self._sem:
+            try:
+                image = await self._generator.generate(submission.prompt)
+                submission.image_id = self._store_image(image)
+                target = self._images[rnd.target_image_id]
+                verdict = await self._judge.judge_one(
+                    target.image_bytes,
+                    JudgeInput(
+                        player_id=submission.player_id,
+                        player_name=self._name_of(submission.player_id),
+                        prompt=submission.prompt,
+                        image_bytes=image.image_bytes,
+                        content_type=image.content_type,
+                    ),
+                    target_content_type=target.content_type,
                 )
-            )
+                submission.breakdown = compose_score(
+                    verdict.score,
+                    submission.submit_fraction,
+                    verdict.rationale,
+                    verdict.dimensions,
+                )
+            except Exception:  # noqa: BLE001 - one bad submission shouldn't sink the round
+                submission.breakdown = compose_score(
+                    0, submission.submit_fraction, "(could not generate or score this image)", {}
+                )
 
-        target = self._images[rnd.target_image_id]
-        verdicts = await self._judge.judge(
-            target.image_bytes, judge_inputs, target_content_type=target.content_type
-        )
+    async def _scoring_phase(self) -> None:
+        """'Waiting for score': hold here until every submitted image has been
+        generated and judged, then fold the results into cumulative scores."""
+        self.state.phase = Phase.SCORING
+        await self._broadcast(self._phase_changed())
+        if self._inflight:
+            await asyncio.gather(*self._inflight, return_exceptions=True)
 
-        # Every player gets a score this round; non-submitters score 0.
+        rnd = self.state.current_round
+        assert rnd is not None
         scores: dict[str, int] = {pid: 0 for pid in self.state.players}
-        for pid, verdict in verdicts.items():
-            scores[pid] = verdict.score
-            rnd.rationales[pid] = verdict.rationale
+        for pid, sub in rnd.submissions.items():
+            if sub.breakdown is not None:
+                scores[pid] = sub.breakdown.final
         self.state.apply_scores(scores)
 
     async def _reveal_phase(self, round_num: int) -> None:
@@ -234,18 +338,22 @@ class Room:
         assert rnd is not None
         results: list[p.ResultView] = []
         for pid, sub in rnd.submissions.items():
-            player = self.state.players.get(pid)
+            b = sub.breakdown
             results.append(
                 p.ResultView(
                     player_id=pid,
-                    player_name=player.name if player else pid,
+                    player_name=self._name_of(pid),
                     prompt=sub.prompt,
                     image_id=sub.image_id,
-                    score=rnd.scores.get(pid),
-                    rationale=rnd.rationales.get(pid),
+                    score=b.final if b else 0,
+                    similarity=b.similarity if b else None,
+                    speed_bonus=b.speed_bonus if b else None,
+                    rationale=b.rationale if b else None,
+                    dimensions=b.dimensions if b else None,
                 )
             )
         results.sort(key=lambda r: -(r.score or 0))
+        self._round_history.append(self._snapshot_round(round_num, rnd))
         await self._broadcast(self._phase_changed())
         await self._broadcast(
             p.RoundReveal(
@@ -267,6 +375,10 @@ class Room:
     def get_image(self, image_id: str) -> GeneratedImage | None:
         return self._images.get(image_id)
 
+    def _name_of(self, player_id: str) -> str:
+        player = self.state.players.get(player_id)
+        return player.name if player else player_id
+
     # -- outbound helpers ---------------------------------------------------
     async def _broadcast(self, message, *, exclude: str | None = None) -> None:
         for pid, conn in list(self._connections.items()):
@@ -287,6 +399,7 @@ class Room:
                 score=pl.score,
                 connected=pl.connected,
                 is_host=pl.is_host,
+                picture_url=pl.picture_url,
             )
             for pl in standings(self.state)
         ]

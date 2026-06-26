@@ -7,11 +7,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from .config import get_settings
 from .realtime import protocol as p
 from .realtime.connection import WebSocketConnection
 from .rooms.manager import RoomManager
+
+
+class CreateRoomRequest(BaseModel):
+    rounds: int | None = Field(default=None, ge=1, le=10)
+    round_seconds: int | None = Field(default=None, ge=5, le=300)
 
 
 @asynccontextmanager
@@ -38,9 +44,16 @@ def create_app(manager: RoomManager | None = None) -> FastAPI:
         return {"ok": True, "rooms": len(app.state.manager.rooms)}
 
     @app.post("/rooms")
-    async def create_room() -> dict:
-        room = app.state.manager.create_room()
-        return {"code": room.code, "total_rounds": room.state.total_rounds}
+    async def create_room(body: CreateRoomRequest | None = None) -> dict:
+        body = body or CreateRoomRequest()
+        room = app.state.manager.create_room(
+            rounds=body.rounds, round_seconds=body.round_seconds
+        )
+        return {
+            "code": room.code,
+            "total_rounds": room.state.total_rounds,
+            "round_seconds": room.state.round_seconds,
+        }
 
     @app.get("/rooms/{code}")
     async def get_room(code: str) -> dict:

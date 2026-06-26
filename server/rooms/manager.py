@@ -19,9 +19,16 @@ from .room import Room
 _CODE_ALPHABET = string.ascii_uppercase + string.digits
 
 
+def _clamp(value: int | None, default: int, *, lo: int, hi: int) -> int:
+    if value is None:
+        return default
+    return max(lo, min(hi, value))
+
+
 class RoomManager:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, recorder=None) -> None:
         self._settings = settings
+        self._recorder = recorder
         self.rooms: dict[str, Room] = {}
         self._sweeper: asyncio.Task | None = None
 
@@ -31,15 +38,24 @@ class RoomManager:
             if code not in self.rooms:
                 return code
 
-    def create_room(self) -> Room:
+    def create_room(
+        self, *, rounds: int | None = None, round_seconds: int | None = None
+    ) -> Room:
         s = self._settings
         room = Room(
             code=self._new_code(),
-            generator=build_image_generator(s.image_provider, fal_key=s.fal_key),
-            judge=build_judge(s.judge, anthropic_api_key=s.anthropic_api_key, model=s.judge_model),
-            total_rounds=s.total_rounds,
-            round_seconds=s.round_seconds,
+            generator=build_image_generator(
+                s.image_provider,
+                openai_api_key=s.openai_api_key,
+                openai_image_model=s.openai_image_model,
+                openai_image_size=s.openai_image_size,
+            ),
+            judge=build_judge(s.judge, openai_api_key=s.openai_api_key, model=s.judge_model),
+            total_rounds=_clamp(rounds, s.total_rounds, lo=1, hi=10),
+            round_seconds=_clamp(round_seconds, s.round_seconds, lo=5, hi=300),
             max_result_concurrency=s.max_result_concurrency,
+            target_difficulty=s.target_difficulty,
+            recorder=self._recorder,
         )
         self.rooms[room.code] = room
         return room

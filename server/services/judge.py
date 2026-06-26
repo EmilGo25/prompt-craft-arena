@@ -1,23 +1,31 @@
-"""Scoring: how close is each generated image to the target?
+"""Scoring: how close is a generated image to the target?
 
-``ClaudeJudge`` sends the target plus every result image to a multimodal Claude
-model in one request and gets back a validated array of per-player scores via
-structured output. ``RandomJudge`` returns arbitrary scores so the game runs
-offline with no API key.
+Each player's image is judged independently the moment it is generated, so they
+get a similarity score plus a written summary right away. The judge returns a
+holistic 0-100 ``score`` plus per-dimension subscores (subject / composition /
+color / mood) so the game can show *why* a score was given. The submission-speed
+bonus is applied separately in ``scoring.py`` — the judge only assesses the
+image.
+
+``OpenAIJudge`` uses a carefully structured system prompt (role, weighted
+dimensions, calibration anchors, guardrails) and structured outputs so scores are
+consistent and parseable. ``RandomJudge`` returns arbitrary verdicts so the game
+runs offline with no API key.
 """
 
 from __future__ import annotations
 
 import base64
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 
 @dataclass(frozen=True)
 class Verdict:
-    score: int  # 0-100
+    score: int  # holistic similarity 0-100
     rationale: str
+    dimensions: dict[str, int] = field(default_factory=dict)  # subject/composition/color/mood
 
 
 @dataclass(frozen=True)
@@ -30,9 +38,13 @@ class JudgeInput:
 
 
 class Judge(Protocol):
-    async def judge(
-        self, target_bytes: bytes, results: list[JudgeInput], *, target_content_type: str = "image/png"
-    ) -> dict[str, Verdict]:
+    async def judge_one(
+        self,
+        target_bytes: bytes,
+        result: JudgeInput,
+        *,
+        target_content_type: str = "image/png",
+    ) -> Verdict:
         ...
 
 
@@ -40,137 +52,137 @@ class Judge(Protocol):
 # Random stub
 # ---------------------------------------------------------------------------
 
+_DIMENSIONS = ("subject", "composition", "color", "mood")
+
 
 class RandomJudge:
     def __init__(self, rng: random.Random | None = None) -> None:
         self._rng = rng or random.Random()
 
-    async def judge(
-        self, target_bytes: bytes, results: list[JudgeInput], *, target_content_type: str = "image/png"
-    ) -> dict[str, Verdict]:
-        return {
-            r.player_id: Verdict(
-                score=self._rng.randint(0, 100),
-                rationale="(random judge)",
-            )
-            for r in results
-        }
+    async def judge_one(
+        self, target_bytes: bytes, result: JudgeInput, *, target_content_type: str = "image/png"
+    ) -> Verdict:
+        dims = {d: self._rng.randint(0, 100) for d in _DIMENSIONS}
+        return Verdict(
+            score=round(sum(dims.values()) / len(dims)),
+            rationale="(random judge)",
+            dimensions=dims,
+        )
 
 
 # ---------------------------------------------------------------------------
 # Claude judge
 # ---------------------------------------------------------------------------
 
-RUBRIC = (
-    "You are the judge in a prompt-writing game. Players were shown a TARGET "
-    "image and each wrote a prompt; an image model produced a RESULT image from "
-    "each prompt. Score how closely each RESULT matches the TARGET on subject, "
-    "composition, color palette, and overall mood. Give an integer 0-100 (100 = "
-    "near-identical) and a one-sentence rationale for each player. Judge only "
-    "visual similarity to the target; ignore artistic quality on its own."
-)
+# System prompt structure (LLM-as-judge best practice):
+#   1. Role  2. Task  3. Weighted dimensions  4. Calibration anchors
+#   5. Guardrails  6. Output contract
+JUDGE_SYSTEM = """\
+You are an expert visual-similarity judge for a competitive prompt-writing game. \
+Players are shown a TARGET image and write a prompt; an image model turns each \
+prompt into a RESULT image. Your job is to score how faithfully a RESULT \
+recreates the TARGET.
 
-SCORE_SCHEMA = {
+Score these four dimensions, each 0-100, in rough order of importance:
+- subject: Are the same main subjects/objects present and dominant? (most important)
+- composition: Do layout, framing, perspective, and the arrangement of elements match?
+- color: Do the color palette, tone, and lighting match?
+- mood: Do the overall atmosphere, genre, and artistic style match?
+
+Then give a holistic overall score 0-100 using these calibration anchors:
+- 90-100: Near-identical. A viewer could mistake one image for the other.
+- 70-89: Clearly the same scene/subject; only minor differences in detail or color.
+- 50-69: Related; the main subject is recognizable but with notable differences.
+- 30-49: Some shared elements, but wrong subject, composition, or mood.
+- 10-29: Only loosely related.
+- 0-9: Unrelated.
+
+Guardrails:
+- Judge ONLY similarity to the TARGET, never standalone artistic quality or polish.
+- Weight the main subject most; heavily penalize a missing or wrong main subject, \
+and penalize major extra elements that aren't in the target.
+- Be objective and consistent across players; identical resemblance must get the \
+same score regardless of order.
+- Ignore minor, unavoidable image-generation artifacts.
+- Judge the IMAGES only. Do not reward clever wording in the prompt.
+
+Return your verdict via the provided structured format. The rationale must be one \
+or two sentences naming the single biggest match and the single biggest difference.\
+"""
+
+VERDICT_SCHEMA = {
     "type": "object",
     "properties": {
-        "scores": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "player_id": {"type": "string"},
-                    "score": {"type": "integer"},
-                    "rationale": {"type": "string"},
-                },
-                "required": ["player_id", "score", "rationale"],
-                "additionalProperties": False,
-            },
-        }
+        "subject": {"type": "integer"},
+        "composition": {"type": "integer"},
+        "color": {"type": "integer"},
+        "mood": {"type": "integer"},
+        "overall": {"type": "integer"},
+        "rationale": {"type": "string"},
     },
-    "required": ["scores"],
+    "required": ["subject", "composition", "color", "mood", "overall", "rationale"],
     "additionalProperties": False,
 }
 
 
-def _image_block(image_bytes: bytes, content_type: str) -> dict:
-    return {
-        "type": "image",
-        "source": {
-            "type": "base64",
-            "media_type": content_type,
-            "data": base64.standard_b64encode(image_bytes).decode(),
-        },
-    }
+def _data_url(image_bytes: bytes, content_type: str) -> str:
+    return f"data:{content_type};base64,{base64.standard_b64encode(image_bytes).decode()}"
 
 
-class ClaudeJudge:
-    def __init__(self, api_key: str, *, model: str = "claude-opus-4-8") -> None:
+def _clamp(v: object) -> int:
+    try:
+        return max(0, min(100, int(v)))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+
+
+class OpenAIJudge:
+    def __init__(self, api_key: str, *, model: str = "gpt-4o") -> None:
         if not api_key:
-            raise ValueError("ClaudeJudge requires an Anthropic API key")
-        # Imported lazily so the stub path needs no anthropic install at runtime.
-        from anthropic import AsyncAnthropic
+            raise ValueError("OpenAIJudge requires an OpenAI API key")
+        from openai import AsyncOpenAI  # lazy: stub path needs no SDK at runtime
 
-        self._client = AsyncAnthropic(api_key=api_key)
+        self._client = AsyncOpenAI(api_key=api_key)
         self._model = model
 
-    async def judge(
-        self, target_bytes: bytes, results: list[JudgeInput], *, target_content_type: str = "image/png"
-    ) -> dict[str, Verdict]:
-        if not results:
-            return {}
-
-        content: list[dict] = [
-            {"type": "text", "text": RUBRIC},
+    async def judge_one(
+        self, target_bytes: bytes, result: JudgeInput, *, target_content_type: str = "image/png"
+    ) -> Verdict:
+        user_content = [
             {"type": "text", "text": "TARGET image:"},
-            _image_block(target_bytes, target_content_type),
+            {"type": "image_url", "image_url": {"url": _data_url(target_bytes, target_content_type)}},
+            {"type": "text", "text": "RESULT image to score against the target:"},
+            {"type": "image_url", "image_url": {"url": _data_url(result.image_bytes, result.content_type)}},
         ]
-        for r in results:
-            content.append(
-                {
-                    "type": "text",
-                    "text": f'RESULT from player_id="{r.player_id}" '
-                    f'(prompt: "{r.prompt}"):',
-                }
-            )
-            content.append(_image_block(r.image_bytes, r.content_type))
-
         try:
-            resp = await self._client.messages.create(
+            resp = await self._client.chat.completions.create(
                 model=self._model,
-                max_tokens=2000,
-                output_config={"format": {"type": "json_schema", "schema": SCORE_SCHEMA}},
-                messages=[{"role": "user", "content": content}],
+                messages=[
+                    {"role": "system", "content": JUDGE_SYSTEM},
+                    {"role": "user", "content": user_content},
+                ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {"name": "verdict", "strict": True, "schema": VERDICT_SCHEMA},
+                },
             )
-            payload = _extract_json(resp)
-        except Exception:  # noqa: BLE001 - degrade to a neutral tie, never crash a round
-            return {r.player_id: Verdict(50, "(judge unavailable)") for r in results}
+            import json
 
-        verdicts: dict[str, Verdict] = {}
-        for item in payload.get("scores", []):
-            pid = item.get("player_id")
-            if pid is not None:
-                verdicts[pid] = Verdict(
-                    score=max(0, min(100, int(item.get("score", 0)))),
-                    rationale=str(item.get("rationale", "")),
-                )
-        # Any player Claude skipped gets a neutral score so reveal is complete.
-        for r in results:
-            verdicts.setdefault(r.player_id, Verdict(0, "(no verdict returned)"))
-        return verdicts
+            data = json.loads(resp.choices[0].message.content)
+        except Exception:  # noqa: BLE001 - degrade to neutral, never crash a round
+            return Verdict(50, "(judge unavailable)", {d: 50 for d in _DIMENSIONS})
+
+        dims = {d: _clamp(data.get(d)) for d in _DIMENSIONS}
+        return Verdict(
+            score=_clamp(data.get("overall")),
+            rationale=str(data.get("rationale", "")),
+            dimensions=dims,
+        )
 
 
-def _extract_json(resp) -> dict:
-    import json
-
-    for block in resp.content:
-        if getattr(block, "type", None) == "text":
-            return json.loads(block.text)
-    return {}
-
-
-def build_judge(judge_kind: str, *, anthropic_api_key: str = "", model: str = "claude-opus-4-8") -> Judge:
-    if judge_kind == "claude":
-        return ClaudeJudge(anthropic_api_key, model=model)
+def build_judge(judge_kind: str, *, openai_api_key: str = "", model: str = "gpt-4o") -> Judge:
+    if judge_kind == "openai":
+        return OpenAIJudge(openai_api_key, model=model)
     if judge_kind == "random":
         return RandomJudge()
     raise ValueError(f"Unknown judge: {judge_kind!r}")

@@ -91,6 +91,20 @@ async def test_full_game_reaches_game_over():
             assert r.image_id is not None
             assert room.get_image(r.image_id) is not None
 
+    # The composite breakdown (similarity + speed bonus + dimensions) is present.
+    sample = reveals[0].results[0]
+    assert sample.similarity is not None
+    assert sample.speed_bonus is not None
+    assert sample.dimensions and set(sample.dimensions) == {
+        "subject", "composition", "color", "mood",
+    }
+
+    # Players passed through the 'waiting for score' (SCORING) phase.
+    assert any(
+        isinstance(m, p.PhaseChanged) and m.phase == Phase.SCORING.value
+        for m in host_conn.sent
+    )
+
 
 @pytest.mark.asyncio
 async def test_non_host_cannot_start():

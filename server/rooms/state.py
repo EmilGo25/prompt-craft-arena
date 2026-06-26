@@ -10,13 +10,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from ..services.scoring import ScoreBreakdown
+
 
 class Phase(StrEnum):
     LOBBY = "lobby"
     GENERATING_TARGET = "generating_target"
     PROMPTING = "prompting"
-    GENERATING_RESULTS = "generating_results"
-    JUDGING = "judging"
+    SCORING = "scoring"  # "waiting for score": images generated + judged for all submissions
     REVEAL = "reveal"
     GAME_OVER = "game_over"
 
@@ -28,21 +29,24 @@ class Player:
     score: int = 0
     connected: bool = True
     is_host: bool = False
+    user_id: str | None = None  # set when the player is an authenticated user
+    picture_url: str | None = None
 
 
 @dataclass
 class Submission:
     player_id: str
     prompt: str
+    submit_fraction: float = 0.0  # 0 = instant, 1 = at the buzzer (drives speed bonus)
     image_id: str | None = None  # set once the result image is generated
+    breakdown: ScoreBreakdown | None = None  # set once generated + judged + composed
 
 
 @dataclass
 class RoundResult:
     target_image_id: str
     submissions: dict[str, Submission] = field(default_factory=dict)
-    scores: dict[str, int] = field(default_factory=dict)
-    rationales: dict[str, str] = field(default_factory=dict)
+    scores: dict[str, int] = field(default_factory=dict)  # final score per player, cumulative
 
 
 @dataclass

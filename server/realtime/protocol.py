@@ -61,6 +61,7 @@ class PlayerView(BaseModel):
     score: int
     connected: bool
     is_host: bool
+    picture_url: str | None = None
 
 
 class ResultView(BaseModel):
@@ -68,8 +69,11 @@ class ResultView(BaseModel):
     player_name: str
     prompt: str
     image_id: str | None
-    score: int | None = None
-    rationale: str | None = None
+    score: int | None = None  # final composite score (counts toward standings)
+    similarity: int | None = None  # LLM-judge holistic visual match
+    speed_bonus: int | None = None  # submission-speed component
+    rationale: str | None = None  # judge's written summary
+    dimensions: dict[str, int] | None = None  # subject/composition/color/mood subscores
 
 
 # ---------------------------------------------------------------------------
@@ -119,11 +123,12 @@ class PromptAccepted(BaseModel):
     type: Literal["prompt_accepted"] = "prompt_accepted"
 
 
-class SubmissionCount(BaseModel):
-    """Broadcast as submissions arrive, so everyone sees progress."""
+class SubmissionStatus(BaseModel):
+    """Broadcast as submissions arrive: which players have submitted, for the
+    per-player placeholder tiles during PROMPTING."""
 
-    type: Literal["submission_count"] = "submission_count"
-    submitted: int
+    type: Literal["submission_status"] = "submission_status"
+    submitted_player_ids: list[str]
     total: int
 
 
@@ -158,7 +163,7 @@ ServerMessage = Union[
     TargetReady,
     Timer,
     PromptAccepted,
-    SubmissionCount,
+    SubmissionStatus,
     RoundReveal,
     GameOver,
     ErrorMessage,
