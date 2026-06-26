@@ -1,0 +1,118 @@
+"""End-to-end: drive a full game through the Room with stub services.
+
+Uses CollectingConnection (no WebSocket) and the stub image generator + random
+judge, so it runs fast and offline. Asserts the room reaches GAME_OVER with
+consistent cumulative standings.
+"""
+
+import asyncio
+
+import pytest
+
+from server.realtime import protocol as p
+from server.realtime.connection import CollectingConnection
+from server.rooms.room import Room
+from server.rooms.state import Phase
+from server.services.image_gen import StubImageGenerator
+from server.services.judge import RandomJudge
+
+
+async def _wait_for(predicate, timeout=5.0):
+    loop = asyncio.get_event_loop()
+    end = loop.time() + timeout
+    while loop.time() < end:
+        if predicate():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("condition not met within timeout")
+
+
+def _last(conn: CollectingConnection, msg_type) -> object | None:
+    for m in reversed(conn.sent):
+        if isinstance(m, msg_type):
+            return m
+    return None
+
+
+@pytest.mark.asyncio
+async def test_full_game_reaches_game_over():
+    room = Room(
+        "TEST",
+        generator=StubImageGenerator(size=64),
+        judge=RandomJudge(),
+        total_rounds=2,
+        round_seconds=5,
+    )
+    host_conn = CollectingConnection()
+    guest_conn = CollectingConnection()
+    host_id = await room.connect("Ann", host_conn)
+    guest_id = await room.connect("Bo", guest_conn)
+
+    # Both players received a Welcome and the lobby roster.
+    assert _last(host_conn, p.Welcome) is not None
+    assert room.state.host_id() == host_id
+
+    # Host starts the game.
+    await room.handle_message(host_id, p.StartGame())
+
+    def reveal_count() -> int:
+        return sum(isinstance(m, p.RoundReveal) for m in host_conn.sent)
+
+    for n in range(1, room.state.total_rounds + 1):
+        # Wait until prompting opens for round n, then both submit (resolves early).
+        await _wait_for(
+            lambda n=n: room.state.phase == Phase.PROMPTING and room.state.round_num == n
+        )
+        await room.handle_message(host_id, p.SubmitPrompt(prompt="a red fox"))
+        await room.handle_message(guest_id, p.SubmitPrompt(prompt="a blue whale"))
+        # Reveal messages accumulate monotonically — wait for this round's.
+        await _wait_for(lambda n=n: reveal_count() >= n)
+
+    await _wait_for(lambda: room.state.phase == Phase.GAME_OVER)
+
+    game_over = _last(host_conn, p.GameOver)
+    assert game_over is not None
+    assert game_over.winner_id in (host_id, guest_id)
+
+    # Cumulative score equals the sum of both round scores per player.
+    reveals = [m for m in host_conn.sent if isinstance(m, p.RoundReveal)]
+    assert len(reveals) == 2
+    totals = {host_id: 0, guest_id: 0}
+    for reveal in reveals:
+        for r in reveal.results:
+            totals[r.player_id] += r.score
+    final = {pv.id: pv.score for pv in game_over.standings}
+    assert final == totals
+
+    # Every image referenced in the reveal is fetchable from the room store.
+    for reveal in reveals:
+        assert room.get_image(reveal.target_image_id) is not None
+        for r in reveal.results:
+            assert r.image_id is not None
+            assert room.get_image(r.image_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_non_host_cannot_start():
+    room = Room("TEST", generator=StubImageGenerator(size=64), judge=RandomJudge(),
+                total_rounds=1, round_seconds=3)
+    host_conn = CollectingConnection()
+    guest_conn = CollectingConnection()
+    await room.connect("Ann", host_conn)
+    guest_id = await room.connect("Bo", guest_conn)
+
+    await room.handle_message(guest_id, p.StartGame())
+    assert room.state.phase == Phase.LOBBY
+    assert _last(guest_conn, p.ErrorMessage) is not None
+
+
+@pytest.mark.asyncio
+async def test_timer_expiry_resolves_round_without_submissions():
+    room = Room("TEST", generator=StubImageGenerator(size=64), judge=RandomJudge(),
+                total_rounds=1, round_seconds=1)
+    host_conn = CollectingConnection()
+    host_id = await room.connect("Ann", host_conn)
+    await room.handle_message(host_id, p.StartGame())
+    # No submissions; the 1s timer must still carry the game to GAME_OVER.
+    await _wait_for(lambda: room.state.phase == Phase.GAME_OVER, timeout=8.0)
+    assert room.state.players[host_id].score == 0

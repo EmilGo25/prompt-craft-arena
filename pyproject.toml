@@ -1,0 +1,27 @@
+[project]
+name = "prompt-craft-arena"
+version = "0.1.0"
+description = "Real-time multiplayer prompt-writing game judged by Claude."
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "httpx>=0.27",
+    "pillow>=11",
+    "anthropic>=0.40",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["server/tests"]
+
+[tool.setuptools.packages.find]
+include = ["server*"]
