@@ -13,8 +13,8 @@ target. Closest wins the round.
 - **Image generation:** pluggable — `stub` (offline, no keys) or `openai` (`gpt-image-1`)
 - **Judge:** `random` (offline) or `openai` (,`gpt-4o`, vision + structured outputs);
   per-submission composite score = LLM similarity + submission-speed bonus
-- **Frontend:** React + Vite + TypeScript (`web/`) — full game UI, ethical design
-  (see `PRINCIPLES.md`)
+- **Frontend:** React + Vite + TypeScript (`web/`) — full game UI, player-friendly
+  design (see `PRINCIPLES.md`)
 
 ## Status
 
@@ -57,12 +57,29 @@ JUDGE=openai               # gpt-4o, vision + structured outputs
 
 ## Tests
 
+Three layers:
+
 ```bash
+# Backend — unit + API/WebSocket integration (37 tests, no keys needed)
 uv run pytest
+
+# Frontend — unit (store, scorecard, i18n, components) via Vitest
+cd web && npm run test
+
+# End-to-end + mobile visual/overflow across device profiles (Playwright)
+cd web && npx playwright install chromium   # once
+cd web && npm run test:e2e
 ```
 
-Covers the state machine, the wire protocol, the Claude/stub judge, and a full
-two-player game driven to `GAME_OVER`.
+- **Backend** (`server/tests/`): state machine, wire protocol, composite scoring,
+  target-prompt difficulty, leaderboard, and full HTTP/WebSocket games to `GAME_OVER`
+  via `TestClient` — all on the offline stub generator + random judge.
+- **Frontend unit** (`web/src/**/*.test.*`): the store reducer, scorecard aggregation,
+  i18n (incl. a check that Hebrew defines every English key), and the Leaderboard.
+- **E2E + mobile** (`web/e2e/`): a real single-player game from home to game over, plus
+  **no-horizontal-overflow** assertions, touch-target sizing, and screenshots on iPhone
+  SE / 12 / 14 Pro Max, Galaxy S9+, Pixel 5, and desktop. Spins up an isolated stub
+  stack on test ports (8123/5180), so it won't touch your dev servers.
 
 ## Layout
 

@@ -46,7 +46,7 @@ with the reasoning. Newest sections are appended at the bottom.
 | Decision | Choice | Why |
 |---|---|---|
 | **Auth method** | **Google OAuth** (server-side flow, app issues its own JWT) | No passwords to manage; user's choice |
-| **Guest play** | **Allowed**; profile + history only for signed-in users | Lowest friction; honors ethical "no login wall" |
+| **Guest play** | **Allowed**; profile + history only for signed-in users | Lowest friction; a friendly "no login wall" |
 | **Database** | **SQLite** via SQLModel/SQLAlchemy (async) | Zero-ops for MVP; same ORM migrates to Postgres later |
 | **Time limit** | **Configured per-game at creation** (`POST /rooms {rounds, round_seconds}`, clamped) | Required by product design |
 | **Submission indication** | Server broadcasts **per-player submitted IDs** (`SubmissionStatus`) | Frontend shows placeholder tiles when others submit |
@@ -86,16 +86,15 @@ with the reasoning. Newest sections are appended at the bottom.
 - Replaced the earlier Claude/fal wiring; dropped the `anthropic` dependency, added `openai`.
   Stub/Random remain for offline dev + tests.
 
-## 9. Ethical game design — darkpattern.games (user directive)
-- Researched [darkpattern.games](https://www.darkpattern.games/) and adopted its "healthy
-  gaming" principles; documented in `PRINCIPLES.md`.
-- **Deliberately avoided:** temporal traps (no daily rewards/streaks/appointment timers;
-  finite game with a clear end; leave anytime, no penalty), monetary traps (no monetization
-  at all), social traps (guest-first, no friend spam, no FOMO), psychological traps
-  (transparent published scoring rubric — counters "illusion of control"; no variable/
-  slot-machine rewards; no collection/completion compulsion).
+## 9. Player-friendly design (user directive)
+- Adopted a set of player-first design principles, documented in `PRINCIPLES.md`.
+- **Commitments:** respect players' time (round count + time limit shown up front; finite
+  games with a clear end; leave anytime with no penalty); free and open (no monetization,
+  no ads — scoring can't be bought); friendly and social (guest-first, short room code,
+  optional sign-in); transparent scoring (full breakdown + published rubric; each player's
+  reasoning is private to them); healthy competition (leaderboard ranks by average score).
 - These shape the frontend: disclose round count + time limit up front; reveal the full score
-  breakdown + rationale; honest countdown; optional (never walled) sign-in.
+  breakdown + rationale; clear countdown; optional (never walled) sign-in.
 
 ---
 

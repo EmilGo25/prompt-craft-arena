@@ -17,12 +17,20 @@
 }
 
 * { box-sizing: border-box; }
+/* NB: do NOT set overflow-x here — `overflow` on html/body breaks position:sticky
+   (the sticky round banner / target on mobile). The layout is overflow-free by
+   design and guarded by the mobile e2e overflow tests instead. */
+html, body { max-width: 100%; }
 body {
   margin: 0;
   background: radial-gradient(1200px 600px at 50% -10%, #1b2348 0, transparent 60%), var(--bg);
   background-color: var(--bg);
   color: var(--text);
+  -webkit-text-size-adjust: 100%;
 }
+img { max-width: 100%; }
+/* allow text in flex/grid cells to shrink/wrap instead of forcing overflow */
+.lb-name, .score-name, .card-name, .player-list-item { min-width: 0; overflow-wrap: anywhere; }
 
 .screen {
   min-height: 100vh;
@@ -42,6 +50,10 @@ h3 { margin: 0 0 10px; }
 .tagline { color: var(--muted); margin-top: 6px; }
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px; /* comfortable touch target (iOS HIG / WCAG 2.5.5) */
   border: 1px solid var(--line);
   background: var(--panel-2);
   color: var(--text);
@@ -255,7 +267,8 @@ h3 { margin: 0 0 10px; }
 }
 
 /* ---- language menu ---- */
-.lang-menu { position: fixed; top: 14px; inset-inline-end: 16px; z-index: 60; }
+/* z-index above the sticky round banner (70) so it's never covered mid-game */
+.lang-menu { position: fixed; top: 14px; inset-inline-end: 16px; z-index: 100; }
 .lang-trigger {
   display: inline-flex; align-items: center; gap: 8px;
   background: var(--panel); border: 1px solid var(--line); color: var(--text);
@@ -289,3 +302,102 @@ h3 { margin: 0 0 10px; }
 [dir="rtl"] .lang-menu { inset-inline-end: 16px; }
 /* Give fixed top-corner content room so the language button doesn't overlap. */
 .screen { padding-top: 64px; }
+
+/* =========================================================================
+   Mobile — phones from ~320px (iPhone SE) to ~430px (Pro Max), Galaxy 360–412.
+   The 760px rules above already stack the two-column grids; these tighten
+   spacing and type so everything fits without horizontal scroll.
+   ========================================================================= */
+@media (max-width: 560px) {
+  .screen { padding: 14px 12px 44px; padding-top: 58px; gap: 14px; }
+  .card-panel { padding: 16px; }
+  h1 { font-size: 1.55rem; }
+  h2 { font-size: 1.2rem; }
+  .hero-logo { width: min(320px, 86%); }
+  .tagline { font-size: 0.95rem; }
+
+  .home-split { gap: 14px; }
+  .leaderboard-panel { margin-top: 0; }
+
+  /* lobby */
+  .lobby-head { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .roomcode { font-size: 1.7rem; letter-spacing: 5px; padding: 6px 14px; }
+  .lobby-actions { gap: 10px; }
+
+  /* rounds / banner / timer — leave room on the end for the language button,
+     which floats above the sticky banner (so it's never hidden mid-game) */
+  .round-banner { padding: 10px 14px; padding-inline-end: 58px; font-size: 0.95rem; }
+  .timer-num { font-size: 1.35rem; }
+
+  /* compact, flag-only language switcher on phones */
+  .lang-label { display: none; }
+  .lang-trigger { padding: 6px 9px; }
+
+  /* reveal + recap: single column, tighter */
+  .cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .recap-cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .recap-round { gap: 12px; }
+
+  /* scorecard */
+  .criterion-val { font-size: 1.5rem; }
+  .criteria-row { gap: 10px; }
+
+  /* leaderboard rows */
+  .lb-row { grid-template-columns: 34px 1fr auto; padding: 9px 12px; gap: 10px; }
+  .lb-avg { font-size: 1.3rem; }
+  .lb-rank { font-size: 1rem; }
+  .lb-top .lb-rank { font-size: 1.3rem; }
+
+  /* keep the language switcher compact */
+  .lang-menu { top: 10px; inset-inline-end: 10px; }
+}
+
+@media (max-width: 380px) {
+  .screen { padding: 12px 10px 40px; padding-top: 54px; }
+  .card-panel { padding: 14px; }
+  h1 { font-size: 1.4rem; }
+  .hero-logo { width: 92%; }
+  .roomcode { font-size: 1.45rem; letter-spacing: 4px; }
+  .cards, .recap-cards { grid-template-columns: 1fr; }
+}
+
+/* On phones the target image pushes content tall — keep the round header (and
+   its countdown timer) pinned to the top while scrolling. Higher z-index + a
+   solid background than the fixed language menu so the timer is never hidden. */
+@media (max-width: 760px) {
+  .round-banner {
+    position: sticky;
+    top: 0;
+    z-index: 70;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.4);
+  }
+  /* Keep a minified target image pinned just under the timer, so the player
+     can reference it while typing without scrolling back up. */
+  .prompting .target-panel {
+    position: sticky;
+    top: 46px; /* sits just below the sticky round banner */
+    z-index: 60;
+    padding: 10px 12px;
+  }
+  .prompting .target-panel h3 {
+    font-size: 0.8rem;
+    margin-bottom: 6px;
+    color: var(--muted);
+  }
+  .prompting .target-img {
+    height: 30vh;
+    width: auto;
+    max-width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    margin: 0 auto;
+    display: block;
+  }
+}
+
+/* Landscape phones (short height): trim vertical padding so content fits. */
+@media (max-height: 460px) and (orientation: landscape) {
+  .screen { padding-top: 50px; }
+  .prepare { padding: 24px 0; }
+  .hero { margin: 4px 0; }
+}
