@@ -109,6 +109,31 @@ with the reasoning. Newest sections are appended at the bottom.
 
 ---
 
+## 12. Local open-weight model providers (user directive)
+- **Goal:** be able to run both AI workloads with **open-source models, fully on-device**
+  (no API keys), as an alternative to OpenAI. Targeted at Apple Silicon (M4 / 24 GB).
+- **Image generation:** added `DrawThingsImageGenerator` (`image_provider="drawthings"`),
+  which calls a local **A1111-compatible `/sdapi/v1/txt2img`** endpoint — Draw Things
+  (`localhost:7860`), AUTOMATIC1111, Forge, or SD.Next. The open-weight model
+  (**FLUX.1-schnell** recommended for live rounds; SDXL-Turbo faster; FLUX.1-dev higher
+  quality but ~50 s/img) is whatever is loaded in that app; we send prompt/size/steps/seed.
+- **Judge:** generalized `OpenAIJudge` with a `base_url` + a portable `json_object`
+  structured-output mode; `build_judge("ollama")` points it at a local **Ollama**
+  OpenAI-compatible endpoint running an open-weight vision model (default `qwen2.5vl:7b`;
+  `qwen2.5vl:32b` for more accuracy). Reuses the same `JUDGE_SYSTEM` prompt + EN/HE support.
+- **Why this shape:** keep the existing pluggable interfaces; OpenAI and stub/random paths
+  are untouched. Reusing the OpenAI SDK (just swapping `base_url`) avoids a second client.
+- **Known tradeoffs (documented in README):** one Mac = one GPU, so per-player generations
+  *serialize* — favor low step counts and use the objective pool to pre-generate targets;
+  on 24 GB run the image model and judge sequentially. Local 7B judge won't perfectly match
+  `gpt-4o` scores. **Licensing:** FLUX.1-schnell is Apache-2.0 (shippable); FLUX.1-dev is
+  non-commercial.
+- **Where:** branch `open-source-models`. Files: `server/services/image_gen.py`,
+  `server/services/judge.py`, `server/config.py`, `server/rooms/manager.py`,
+  `.env.example`, `README.md`; wiring tests in `server/tests/test_providers.py`.
+
+---
+
 ## Open / pending (not yet built)
 - Workstream B (SQLite + Google auth + history) — planned, not yet built.
 - See `~/.claude/plans/parsed-whistling-elephant.md`.
