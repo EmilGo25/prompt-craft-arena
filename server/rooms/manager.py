@@ -13,8 +13,10 @@ import time
 
 from ..config import Settings
 from ..leaderboard import LeaderboardStore
+from ..metrics import Metrics
 from ..services.image_gen import build_image_generator
 from ..services.judge import build_judge
+from ..services.objective_pool import ObjectivePool
 from .room import Room
 
 _CODE_ALPHABET = string.ascii_uppercase + string.digits
@@ -33,6 +35,31 @@ class RoomManager:
         self.leaderboard = LeaderboardStore(settings.leaderboard_path)
         self.rooms: dict[str, Room] = {}
         self._sweeper: asyncio.Task | None = None
+        self.metrics = Metrics()
+        self.objective_pool = self._build_pool(settings)
+
+    def _build_pool(self, s: Settings) -> ObjectivePool | None:
+        if not s.objective_pool_enabled:
+            return None
+        # Only stock the difficulties games actually draw: a fixed difficulty
+        # needs just that one box, while "ramp" walks through all three. This
+        # avoids pre-generating (and paying for) images no game would ever use.
+        difficulties = None if s.target_difficulty == "ramp" else [s.target_difficulty]
+        return ObjectivePool(
+            build_image_generator(
+                s.image_provider,
+                openai_api_key=s.openai_api_key,
+                openai_image_model=s.openai_image_model,
+                openai_image_size=s.openai_image_size,
+            ),
+            difficulties=difficulties,
+            target_size=s.objective_pool_target,
+            floor=s.objective_pool_floor,
+            max_pool=s.objective_pool_max,
+            max_concurrency=s.objective_pool_concurrency,
+            refill_interval=s.objective_pool_refill_interval_seconds,
+            metrics=self.metrics,
+        )
 
     def _new_code(self) -> str:
         while True:
@@ -59,6 +86,9 @@ class RoomManager:
             target_difficulty=s.target_difficulty,
             recorder=self._recorder,
             leaderboard=self.leaderboard,
+            image_retention_seconds=s.image_retention_seconds,
+            objective_pool=self.objective_pool,
+            metrics=self.metrics,
         )
         self.rooms[room.code] = room
         return room

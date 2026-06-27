@@ -60,6 +60,9 @@ class Room:
         target_difficulty: str = "medium",
         recorder: GameRecorder | None = None,
         leaderboard=None,
+        image_retention_seconds: int = 300,
+        objective_pool=None,
+        metrics=None,
     ) -> None:
         self.code = code
         self.state = GameState(total_rounds=total_rounds, round_seconds=round_seconds)
@@ -70,6 +73,9 @@ class Room:
         self._target_prompts = TargetPromptGenerator()
         self._recorder = recorder
         self._leaderboard = leaderboard
+        self._image_retention_seconds = image_retention_seconds
+        self._objective_pool = objective_pool
+        self._metrics = metrics
 
         self._connections: dict[str, Connection] = {}
         self._images: dict[str, GeneratedImage] = {}
@@ -79,6 +85,7 @@ class Room:
         self._sem = asyncio.Semaphore(max_result_concurrency)
         self._round_start_mono: float = 0.0
         self._inflight: list[asyncio.Task] = []
+        self._image_cleanup_task: asyncio.Task | None = None
         self.last_active = time.time()
 
     # -- roster / connections ----------------------------------------------
@@ -134,6 +141,8 @@ class Room:
         if self.state.phase != Phase.LOBBY:
             await self._send(player_id, p.ErrorMessage(detail="Game already in progress."))
             return
+        if self._metrics is not None:
+            self._metrics.inc("games_started_total")  # demand signal for pool sizing
         self._game_task = asyncio.create_task(self._run_game())
 
     async def _handle_submit(self, player_id: str, prompt: str, lang: str = "en") -> None:
@@ -171,6 +180,9 @@ class Room:
             return
         if self.state.phase != Phase.GAME_OVER:
             return
+        # A new game is starting before the old one's images aged out: cancel the
+        # pending deletion so it can't fire mid-game and wipe fresh images.
+        self._cancel_image_cleanup()
         for pl in self.state.players.values():
             pl.score = 0
         self.state.phase = Phase.LOBBY
@@ -203,6 +215,9 @@ class Room:
         )
         self._record_leaderboard(ranked)
         await self._record_game(ranked)
+        # Players linger on the game-over recap (which still renders every round's
+        # images), so we can't free them yet. Delete after a grace window.
+        self._schedule_image_cleanup()
 
     def _record_leaderboard(self, ranked: list[Player]) -> None:
         """Fold this game into the global leaderboard (all players, guests too)."""
@@ -278,8 +293,12 @@ class Room:
             if self._difficulty == "ramp"
             else self._difficulty
         )
-        seed_prompt = self._target_prompts.generate(difficulty)
-        image = await self._generator.generate(seed_prompt)
+        # Take a pre-generated target off the shelf if one is ready (instant);
+        # otherwise fall back to drawing it live — never worse than before.
+        image = self._objective_pool.acquire(difficulty) if self._objective_pool else None
+        if image is None:
+            seed_prompt = self._target_prompts.generate(difficulty)
+            image = await self._generator.generate(seed_prompt)
         target_id = self._store_image(image)
         self.state.current_round = RoundResult(target_image_id=target_id)
         await self._broadcast(p.TargetReady(image_id=target_id, round_num=round_num))
@@ -409,6 +428,30 @@ class Room:
 
     def get_image(self, image_id: str) -> GeneratedImage | None:
         return self._images.get(image_id)
+
+    # -- image retention / cleanup -----------------------------------------
+    def _schedule_image_cleanup(self) -> None:
+        """Free this game's images after the retention window. The game-over
+        recap keeps rendering them, so deletion is deferred, not immediate."""
+        self._cancel_image_cleanup()
+        self._image_cleanup_task = asyncio.create_task(self._cleanup_images_later())
+
+    def _cancel_image_cleanup(self) -> None:
+        task = self._image_cleanup_task
+        self._image_cleanup_task = None
+        if task is not None and not task.done():
+            task.cancel()
+
+    async def _cleanup_images_later(self) -> None:
+        try:
+            await asyncio.sleep(self._image_retention_seconds)
+        except asyncio.CancelledError:
+            return
+        # Drop every image (targets + submissions) and the snapshots that hold
+        # copies of their bytes, so a finished game stops occupying memory.
+        self._images.clear()
+        self._round_history.clear()
+        self._image_cleanup_task = None
 
     def _name_of(self, player_id: str) -> str:
         player = self.state.players.get(player_id)
