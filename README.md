@@ -13,8 +13,8 @@ target. Closest wins the round.
 - **Image generation:** pluggable — `stub` (offline, no keys) or `openai` (`gpt-image-1`)
 - **Judge:** `random` (offline) or `openai` (,`gpt-4o`, vision + structured outputs);
   per-submission composite score = LLM similarity + submission-speed bonus
-- **Frontend:** React + Vite + TypeScript (`web/`) — full game UI, ethical design
-  (see `PRINCIPLES.md`)
+- **Frontend:** React + Vite + TypeScript (`web/`) — full game UI, player-friendly
+  design (see `PRINCIPLES.md`)
 
 ## Status
 

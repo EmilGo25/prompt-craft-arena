@@ -1,51 +1,44 @@
-# Ethical game design — applying darkpattern.games
+# Design Principles
 
+Prompt-craft Arena is built to be **fair, fun, and respectful of players' time**.
+These are the commitments that shape the product.
 
-## Temporal — *"makes you play longer than you meant to"*
-Avoid: daily-reward / login streaks, appointment timers, grinding, can't-pause/save.
+## Respect your time
+- **The time commitment is clear up front.** `POST /rooms` returns `total_rounds`
+  and `round_seconds`; the lobby shows the round count before anyone starts.
+- **Games are finite with a clear end.** A game is a fixed number of rounds, then a
+  clean `GAME_OVER` and final standings.
+- **Leave any time, no penalty.** Disconnecting is handled gracefully; standings
+  persist and nothing is lost.
 
-- **Disclose the time commitment up front.** `POST /rooms` returns `total_rounds`
-  and `round_seconds`; the lobby shows "N rounds × M seconds" before anyone starts.
-- **Natural, finite endpoint.** A game is a fixed number of rounds, then it ends with
-  a clear `GAME_OVER`. No infinite ladder, no "one more round" pressure.
-- **Leave anytime, no penalty.** Disconnecting is handled cleanly; standings persist
-  but there is no streak to break, no punishment, nothing lost.
-- **No daily rewards / login bonuses / appointment mechanics.** None exist by design.
+## Free and open
+- **No monetization.** No currency, purchases, boosters, or ads. Scoring depends only
+  on your prompt and how quickly you submit — it can't be bought.
 
-## Monetary — *"tricks you into spending"*
-Avoid: pay-to-win, pay-to-skip, premium currency, lootboxes, bait-and-switch.
+## Friendly and social
+- **Guest play is first-class.** You never need an account to play; signing in only
+  adds a personal profile + history.
+- **Easy to play with friends.** Joining is a short room code the players share
+  themselves — no contact harvesting, no required invites.
 
-- **No monetization at all.** No currency, no purchases, no boosters, no ads. Scoring
-  cannot be bought; the only inputs are your prompt and how quickly you submit.
+## Transparent scoring
+- **You see how every score is made.** Each round reveal shows the full breakdown:
+  the judge's holistic similarity, the per-dimension subscores (subject / composition
+  / color / mood), the submission-speed bonus, and a written rationale explaining why.
+- **Scores are earned from a published rubric**, not chance. The judge applies a fixed,
+  documented rubric (`services/judge.py` → `JUDGE_SYSTEM`) with clear calibration
+  anchors. The speed bonus is a small, disclosed 20% weight that never lets a fast but
+  inaccurate answer beat a slow, accurate one.
+- **Your breakdown is private to you.** Each player sees the reasoning behind their own
+  score; others see only the shared images and final scores.
 
-## Social — *"uses your relationships against you"*
-Avoid: friend spam, social obligation / guild pressure, fear-of-missing-out.
+## Healthy competition
+- **A global leaderboard ranks by average score**, so improvement — not grinding — is
+  what climbs the board. Top finishers earn gold, silver, and bronze.
 
-- **Guest play is first-class.** You never need an account to play; sign-in only adds
-  a personal profile + history (opt-in), never gates the game.
-- **No friend spam / invites / sharing prompts.** Joining is a short room code shared
-  by the players themselves — no contact harvesting, no "invite 3 friends to unlock".
-- **No FOMO.** No limited-time events or expiring content.
-
-## Psychological — *"tricks you into bad decisions"*
-Avoid: variable/random "slot-machine" rewards, complete-the-collection, aesthetic
-manipulation, illusion of control (hidden mechanics).
-
-- **Transparent scoring (counters illusion of control).** Every round reveal shows the
-  full breakdown: the LLM judge's holistic similarity, the per-dimension subscores
-  (subject / composition / color / mood), the submission-speed bonus, and a written
-  rationale explaining *why*. The mechanics are visible, not a black box.
-- **Scores are earned, not random.** The judge applies a fixed, published rubric
-  (`services/judge.py` → `JUDGE_SYSTEM`) with calibration anchors — not a variable
-  reward designed to hook. The speed bonus is a small, disclosed weight (20%) that
-  never lets a fast-but-wrong answer beat a slow-but-accurate one.
-- **No collection/completion compulsion.** No badges-to-collect, no unlock treadmill.
-  The reward is the fun of the round and seeing how close you got.
-
-## Carry-through to the frontend (Workstream C)
-- Lobby states the exact round count and per-round time limit before "Start".
-- Reveal screen renders the entire score breakdown + rationale (no hidden math).
-- A visible, accurate countdown (server-driven) with a calm urgency cue near zero —
-  an honest signal, not an anxiety-inducing manipulation.
-- Clear "leave game" affordance with no penalty messaging.
-- Sign-in is an optional button, never a wall or a nag.
+## In the frontend
+- The lobby states the exact round count and per-round time limit before "Start".
+- The reveal screen renders the full score breakdown + rationale — no hidden math.
+- A visible, accurate countdown gives a clear, calm cue as time runs low.
+- A clear "leave game" option is always available.
+- Sign-in is an optional button, never a wall.
