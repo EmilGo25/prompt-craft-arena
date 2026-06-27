@@ -8,6 +8,14 @@ export type Phase =
   | "reveal"
   | "game_over";
 
+export interface LeaderboardEntry {
+  rank: number;
+  name: string;
+  avg: number;
+  best: number;
+  games: number;
+}
+
 export interface PlayerView {
   id: string;
   name: string;

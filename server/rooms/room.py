@@ -59,6 +59,7 @@ class Room:
         max_result_concurrency: int = 4,
         target_difficulty: str = "medium",
         recorder: GameRecorder | None = None,
+        leaderboard=None,
     ) -> None:
         self.code = code
         self.state = GameState(total_rounds=total_rounds, round_seconds=round_seconds)
@@ -68,6 +69,7 @@ class Room:
         self._difficulty = target_difficulty
         self._target_prompts = TargetPromptGenerator()
         self._recorder = recorder
+        self._leaderboard = leaderboard
 
         self._connections: dict[str, Connection] = {}
         self._images: dict[str, GeneratedImage] = {}
@@ -199,7 +201,20 @@ class Room:
                 winner_id=ranked[0].id if ranked else None,
             )
         )
+        self._record_leaderboard(ranked)
         await self._record_game(ranked)
+
+    def _record_leaderboard(self, ranked: list[Player]) -> None:
+        """Fold this game into the global leaderboard (all players, guests too)."""
+        if self._leaderboard is None or not self._round_history:
+            return
+        try:
+            self._leaderboard.record_game(
+                [(pl.name, pl.score) for pl in ranked],
+                rounds_played=len(self._round_history),
+            )
+        except Exception:  # noqa: BLE001 - never let bookkeeping break a game
+            pass
 
     async def _record_game(self, ranked: list[Player]) -> None:
         if self._recorder is None or not self._round_history:

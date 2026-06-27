@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createRoom, roomExists } from "../api";
 import { useTranslation } from "../i18n";
+import { Leaderboard } from "../components/Leaderboard";
 
 export function Home({
   onEnter,
@@ -51,11 +52,13 @@ export function Home({
   return (
     <div className="screen home">
       <header className="hero">
-        <h1>Prompt-craft Arena</h1>
+        <img className="hero-logo" src="/brand/logo.png" alt="Prompt-craft Arena" />
+        <h1 className="visually-hidden">Prompt-craft Arena</h1>
         <p className="tagline">{t("home.tagline")}</p>
       </header>
 
-      <div className="card-panel">
+      <div className="home-split">
+      <div className="card-panel home-config">
         <label className="field">
           <span>{t("home.displayName")}</span>
           <input
@@ -66,7 +69,7 @@ export function Home({
           />
         </label>
 
-        <div className="panel-cols">
+        <div className="config-sections">
           <section className="panel-col">
             <h2>{t("home.createTitle")}</h2>
             <label className="field">
@@ -101,7 +104,7 @@ export function Home({
             </button>
           </section>
 
-          <div className="divider" />
+          <div className="divider-h" />
 
           <section className="panel-col">
             <h2>{t("home.joinTitle")}</h2>
@@ -121,6 +124,9 @@ export function Home({
         </div>
 
         {error && <div className="error-banner">{error}</div>}
+      </div>
+
+      <Leaderboard />
       </div>
 
       <footer className="home-foot muted">{t("home.footer")}</footer>
