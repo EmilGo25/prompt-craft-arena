@@ -7,6 +7,9 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: { port: 5173 },
+  // Allow Cloudflare quick-tunnel hosts (scripts/share.sh) to reach the
+  // `vite preview` server — otherwise Vite 403s the random *.trycloudflare.com Host.
+  preview: { allowedHosts: [".trycloudflare.com"] },
   test: {
     environment: "jsdom",
     globals: true,
