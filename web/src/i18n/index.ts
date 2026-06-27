@@ -15,9 +15,23 @@ function applyDocument(lang: Lang): void {
   root.lang = lang;
 }
 
+// localStorage can throw (Safari private mode) or be unavailable (SSR/tests) —
+// degrade gracefully to the default language rather than crashing on import.
 function initialLang(): Lang {
-  const stored = localStorage.getItem("lang");
-  return stored === "he" || stored === "en" ? stored : "en";
+  try {
+    const stored = localStorage.getItem("lang");
+    return stored === "he" || stored === "en" ? stored : "en";
+  } catch {
+    return "en";
+  }
+}
+
+function persistLang(lang: Lang): void {
+  try {
+    localStorage.setItem("lang", lang);
+  } catch {
+    /* ignore — preference just won't persist */
+  }
 }
 
 interface I18nState {
@@ -28,7 +42,7 @@ interface I18nState {
 export const useI18n = create<I18nState>((set) => ({
   lang: initialLang(),
   setLang: (lang) => {
-    localStorage.setItem("lang", lang);
+    persistLang(lang);
     applyDocument(lang);
     set({ lang });
   },
