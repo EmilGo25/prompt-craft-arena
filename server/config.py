@@ -32,9 +32,24 @@ class Settings(BaseSettings):
 
     # Room lifecycle
     empty_room_ttl_seconds: int = 120
+    # How long a finished game's images stay fetchable (for the game-over recap
+    # screen) before they're freed. Players sit on the summary screen after the
+    # game ends; this is the grace window before those images are deleted.
+    image_retention_seconds: int = 300
 
     # Global leaderboard (file-backed for now)
     leaderboard_path: str = "./data/leaderboard.json"
+
+    # Objective pool: pre-generate target images off the request path so games
+    # don't wait ~15-30s for a live draw. Disabled by default — turning it on
+    # changes nothing functionally, it only makes game start faster (with a
+    # live-draw fallback whenever the shelf is empty).
+    objective_pool_enabled: bool = False
+    objective_pool_target: int = 8      # desired ready images per difficulty
+    objective_pool_floor: int = 3       # low watermark that triggers a refill
+    objective_pool_max: int = 50        # hard ceiling per difficulty (cost seatbelt)
+    objective_pool_concurrency: int = 4  # max simultaneous pre-generations
+    objective_pool_refill_interval_seconds: float = 2.0
 
 
 @lru_cache

@@ -24,8 +24,12 @@ class CreateRoomRequest(BaseModel):
 async def lifespan(app: FastAPI):
     manager: RoomManager = app.state.manager
     manager.start_sweeper()
+    if manager.objective_pool is not None:
+        manager.objective_pool.start()
     yield
     await manager.stop_sweeper()
+    if manager.objective_pool is not None:
+        await manager.objective_pool.stop()
 
 
 def create_app(manager: RoomManager | None = None) -> FastAPI:
@@ -41,7 +45,18 @@ def create_app(manager: RoomManager | None = None) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict:
-        return {"ok": True, "rooms": len(app.state.manager.rooms)}
+        manager = app.state.manager
+        out: dict = {"ok": True, "rooms": len(manager.rooms)}
+        if manager.objective_pool is not None:
+            out["objective_pool"] = manager.objective_pool.stats()
+        return out
+
+    @app.get("/metrics")
+    async def metrics() -> Response:
+        return Response(
+            content=app.state.manager.metrics.render(),
+            media_type="text/plain; version=0.0.4",
+        )
 
     @app.post("/rooms")
     async def create_room(body: CreateRoomRequest | None = None) -> dict:

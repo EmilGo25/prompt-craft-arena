@@ -113,6 +113,51 @@ async def test_full_game_reaches_game_over():
     )
 
 
+async def _play_one_round_to_game_over(room: Room, host_conn: CollectingConnection) -> str:
+    """Drive a single-round game to GAME_OVER and return the host's id."""
+    host_id = await room.connect("Ann", host_conn)
+    await room.handle_message(host_id, p.StartGame())
+    await _wait_for(lambda: room.state.phase == Phase.PROMPTING)
+    await room.handle_message(host_id, p.SubmitPrompt(prompt="a red fox"))
+    await _wait_for(lambda: room.state.phase == Phase.GAME_OVER)
+    return host_id
+
+
+@pytest.mark.asyncio
+async def test_images_deleted_after_retention_window():
+    room = Room("TEST", generator=StubImageGenerator(size=64), judge=RandomJudge(),
+                total_rounds=1, round_seconds=5, image_retention_seconds=0.2)
+    host_conn = CollectingConnection()
+    await _play_one_round_to_game_over(room, host_conn)
+
+    reveal = _last(host_conn, p.RoundReveal)
+    assert reveal is not None
+    # Images are still fetchable right after the game ends (recap screen needs them).
+    assert room.get_image(reveal.target_image_id) is not None
+    assert room._images  # noqa: SLF001 - asserting internal store cleared below
+
+    # After the retention window they're freed.
+    await _wait_for(lambda: not room._images, timeout=3.0)  # noqa: SLF001
+    assert room.get_image(reveal.target_image_id) is None
+    assert room._round_history == []  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_play_again_cancels_pending_image_cleanup():
+    # Long window so the cleanup would NOT fire on its own during the test.
+    room = Room("TEST", generator=StubImageGenerator(size=64), judge=RandomJudge(),
+                total_rounds=1, round_seconds=5, image_retention_seconds=60)
+    host_conn = CollectingConnection()
+    host_id = await _play_one_round_to_game_over(room, host_conn)
+    assert room._image_cleanup_task is not None  # noqa: SLF001
+
+    await room.handle_message(host_id, p.PlayAgain())
+    assert room.state.phase == Phase.LOBBY
+    # The pending deletion is cancelled so it can't wipe the next game's images.
+    assert room._image_cleanup_task is None  # noqa: SLF001
+    assert room._images == {}  # noqa: SLF001 - play_again also clears the old images
+
+
 @pytest.mark.asyncio
 async def test_non_host_cannot_start():
     room = Room("TEST", generator=StubImageGenerator(size=64), judge=RandomJudge(),
