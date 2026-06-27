@@ -132,6 +132,22 @@ with the reasoning. Newest sections are appended at the bottom.
   `server/services/judge.py`, `server/config.py`, `server/rooms/manager.py`,
   `.env.example`, `README.md`; wiring tests in `server/tests/test_providers.py`.
 
+## 13. Local providers — verified end-to-end + latency/tuning (Apple Silicon M4 / 24 GB)
+- **Verified locally (2026-06-27):** `uv run pytest` → 48 passed; Ollama judge
+  returns real per-dimension verdicts + rationale (no `(judge unavailable)` fallback); a full
+  1-player round through the live server rendered target + result images (HTTP 200) and a real
+  composite score. Setup needed `brew install uv ollama` (neither was present) + `ollama pull
+  qwen2.5vl:7b`; Draw Things is a manual GUI install with FLUX.1-schnell + HTTP server enabled.
+- **Measured latency (warm, FLUX.1-schnell):** seconds-per-image is dominated by image size —
+  **1024²/4 steps ≈ 63 s**, 768²/4 ≈ 38 s, 768²/2 ≈ 23 s, **512²/4 ≈ 22 s**. Judge ≈ 6.5 s warm.
+  One GPU ⇒ per-player gens serialize; alternating FLUX↔qwen on 24 GB causes model-reload thrash
+  (one round's SCORING took ~82 s vs the ~67 s of gen+judge alone).
+- **Tuning:** `OBJECTIVE_POOL_ENABLED=true` was **enabled** (verified pre-generating `medium`
+  targets in the background via `/health`); pairs well with a smaller `DRAWTHINGS_SIZE` since at
+  1024² each pre-gen is a ~63 s GPU draw that contends with live result generation. Still
+  *recommended, not applied* (gameplay timing left to the user): `DRAWTHINGS_SIZE=512x512` (~3×
+  faster) and `MAX_RESULT_CONCURRENCY=1` (the GPU serializes anyway; avoids contention/thrash).
+
 ---
 
 ## Open / pending (not yet built)
