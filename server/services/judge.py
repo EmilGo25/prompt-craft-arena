@@ -9,8 +9,10 @@ image.
 
 ``OpenAIJudge`` uses a carefully structured system prompt (role, weighted
 dimensions, calibration anchors, guardrails) and structured outputs so scores are
-consistent and parseable. ``RandomJudge`` returns arbitrary verdicts so the game
-runs offline with no API key.
+consistent and parseable. It also drives any OpenAI-compatible endpoint — most
+usefully a *local* Ollama server running an open-weight vision model (e.g.
+``qwen2.5vl``), selected via ``build_judge("ollama", ...)``. ``RandomJudge``
+returns arbitrary verdicts so the game runs offline with no API key.
 """
 
 from __future__ import annotations
@@ -147,13 +149,38 @@ def _clamp(v: object) -> int:
 
 
 class OpenAIJudge:
-    def __init__(self, api_key: str, *, model: str = "gpt-4o") -> None:
+    """Vision judge over any OpenAI-compatible Chat Completions endpoint.
+
+    With ``base_url`` left unset it talks to OpenAI (``gpt-4o``). Point it at a
+    local Ollama server (``http://localhost:11434/v1``) to run an open-weight
+    vision model fully on-device. ``structured`` selects how the JSON verdict is
+    requested: ``"json_schema"`` (OpenAI strict schema) or the more widely
+    supported ``"json_object"`` used for local servers.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        model: str = "gpt-4o",
+        base_url: str | None = None,
+        structured: str = "json_schema",
+    ) -> None:
         if not api_key:
-            raise ValueError("OpenAIJudge requires an OpenAI API key")
+            raise ValueError("OpenAIJudge requires an API key (use any non-empty string for local servers)")
         from openai import AsyncOpenAI  # lazy: stub path needs no SDK at runtime
 
-        self._client = AsyncOpenAI(api_key=api_key)
+        self._client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self._model = model
+        self._structured = structured
+
+    def _response_format(self) -> dict:
+        if self._structured == "json_object":
+            return {"type": "json_object"}
+        return {
+            "type": "json_schema",
+            "json_schema": {"name": "verdict", "strict": True, "schema": VERDICT_SCHEMA},
+        }
 
     async def judge_one(
         self,
@@ -175,6 +202,16 @@ class OpenAIJudge:
                 "The numeric scores are unaffected by language.",
             },
         ]
+        if self._structured == "json_object":
+            # No strict schema to pin the keys, so spell them out for the model.
+            user_content.append(
+                {
+                    "type": "text",
+                    "text": "Respond with ONLY a JSON object with these exact keys: "
+                    "subject, composition, color, mood, overall (each an integer 0-100), "
+                    "and rationale (a string).",
+                }
+            )
         try:
             resp = await self._client.chat.completions.create(
                 model=self._model,
@@ -182,10 +219,7 @@ class OpenAIJudge:
                     {"role": "system", "content": JUDGE_SYSTEM},
                     {"role": "user", "content": user_content},
                 ],
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {"name": "verdict", "strict": True, "schema": VERDICT_SCHEMA},
-                },
+                response_format=self._response_format(),
             )
             import json
 
@@ -201,9 +235,25 @@ class OpenAIJudge:
         )
 
 
-def build_judge(judge_kind: str, *, openai_api_key: str = "", model: str = "gpt-4o") -> Judge:
+def build_judge(
+    judge_kind: str,
+    *,
+    openai_api_key: str = "",
+    model: str = "gpt-4o",
+    ollama_base_url: str = "http://localhost:11434/v1",
+    ollama_model: str = "qwen2.5vl:7b",
+) -> Judge:
     if judge_kind == "openai":
         return OpenAIJudge(openai_api_key, model=model)
+    if judge_kind == "ollama":
+        # Local, open-weight vision judge over Ollama's OpenAI-compatible API.
+        # The api_key is ignored by Ollama but the SDK requires a non-empty one.
+        return OpenAIJudge(
+            "ollama",
+            model=ollama_model,
+            base_url=ollama_base_url,
+            structured="json_object",
+        )
     if judge_kind == "random":
         return RandomJudge()
     raise ValueError(f"Unknown judge: {judge_kind!r}")

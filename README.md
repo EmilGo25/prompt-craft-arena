@@ -10,8 +10,10 @@ image from each prompt; and **an AI judge** scores which result lands closest to
 target. Closest wins the round.
 
 - **Backend:** FastAPI + WebSockets (server-authoritative game loop)
-- **Image generation:** pluggable — `stub` (offline, no keys) or `openai` (`gpt-image-1`)
-- **Judge:** `random` (offline) or `openai` (,`gpt-4o`, vision + structured outputs);
+- **Image generation:** pluggable — `stub` (offline, no keys), `openai` (`gpt-image-1`),
+  or `drawthings` (local open-weight FLUX.1 / SDXL via a Draw Things / A1111 server)
+- **Judge:** `random` (offline), `openai` (`gpt-4o`, vision + structured outputs),
+  or `ollama` (local open-weight vision model, e.g. `qwen2.5vl`);
   per-submission composite score = LLM similarity + submission-speed bonus
 - **Frontend:** React + Vite + TypeScript (`web/`) — full game UI, player-friendly
   design (see `PRINCIPLES.md`)
@@ -54,6 +56,41 @@ OPENAI_API_KEY=...
 IMAGE_PROVIDER=openai      # gpt-image-1
 JUDGE=openai               # gpt-4o, vision + structured outputs
 ```
+
+## Run fully local (open-weight models, no keys)
+
+Both workloads can run on-device with open-weight models — no API keys, nothing
+leaves the machine. Tuned for Apple Silicon (e.g. an M4 / 24 GB Mac).
+
+**Judge — Ollama + a vision model:**
+
+```bash
+brew install ollama && ollama serve     # in one terminal
+ollama pull qwen2.5vl:7b                 # ~6 GB; or qwen2.5vl:32b for more accuracy
+```
+
+**Image generation — Draw Things (or any A1111-compatible WebUI):**
+
+Install [Draw Things](https://drawthings.ai), load an open-weight model
+(**FLUX.1-schnell** is the best speed/quality balance for live rounds; SDXL-Turbo
+is faster, FLUX.1-dev is higher quality but ~50 s/image), and enable its HTTP API
+server (defaults to `http://localhost:7860`). AUTOMATIC1111 / Forge / SD.Next work
+too — they share the `/sdapi/v1/txt2img` API.
+
+Then in `.env`:
+
+```
+IMAGE_PROVIDER=drawthings   # local FLUX.1 / SDXL
+DRAWTHINGS_STEPS=4          # low steps suit schnell / turbo models
+JUDGE=ollama                # local qwen2.5vl
+OLLAMA_JUDGE_MODEL=qwen2.5vl:7b
+```
+
+> **Note on a single Mac:** there's one GPU, so per-player generations *serialize*
+> rather than run in parallel. Favor fast step counts (schnell/turbo) and consider
+> the objective pool (`OBJECTIVE_POOL_ENABLED=true`) to pre-generate target images
+> off the request path. With 24 GB, run the image model and the judge sequentially
+> rather than expecting both resident at once.
 
 ## Tests
 

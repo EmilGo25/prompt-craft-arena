@@ -15,13 +15,27 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
 
     # Image generation
-    image_provider: Literal["stub", "openai"] = "stub"
+    #   stub       - offline, no keys
+    #   openai     - gpt-image-1
+    #   drawthings - local, open-weight models (FLUX.1 / SDXL) via a Draw Things
+    #                or A1111-compatible HTTP server. No keys, fully on-device.
+    image_provider: Literal["stub", "openai", "drawthings"] = "stub"
     openai_image_model: str = "gpt-image-1"  # or gpt-image-1.5 / gpt-image-2
     openai_image_size: str = "1024x1024"
+    # Local (Draw Things / A1111 / Forge) image generation
+    drawthings_api_base: str = "http://localhost:7860"
+    drawthings_steps: int = 4  # low step count suits FLUX.1-schnell / SDXL-Turbo
+    drawthings_size: str = "1024x1024"
 
     # Judge
-    judge: Literal["random", "openai"] = "random"
+    #   random - offline, no keys
+    #   openai - gpt-4o (vision + structured outputs)
+    #   ollama - local, open-weight vision model (e.g. qwen2.5vl) via Ollama
+    judge: Literal["random", "openai", "ollama"] = "random"
     judge_model: str = "gpt-4o"  # vision + structured outputs (json_schema)
+    # Local judge via Ollama's OpenAI-compatible endpoint
+    ollama_base_url: str = "http://localhost:11434/v1"
+    ollama_judge_model: str = "qwen2.5vl:7b"  # or qwen2.5vl:32b, qwen3-vl, ...
 
     # Gameplay
     round_seconds: int = 60

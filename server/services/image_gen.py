@@ -4,6 +4,9 @@ This is the one place that talks to an external image model. The
 ``StubImageGenerator`` renders the prompt text onto a deterministic colored card
 with Pillow, so the entire game runs offline with no API keys.
 ``OpenAIImageGenerator`` calls OpenAI's image API (gpt-image-1).
+``DrawThingsImageGenerator`` calls a *local* A1111-compatible HTTP server (Draw
+Things, AUTOMATIC1111, Forge, ...) so open-weight models (FLUX.1, SDXL) can run
+fully on-device with no API keys.
 """
 
 from __future__ import annotations
@@ -101,16 +104,80 @@ class OpenAIImageGenerator:
         return GeneratedImage(image_bytes=base64.b64decode(b64), content_type="image/png")
 
 
+# ---------------------------------------------------------------------------
+# Draw Things / A1111-compatible local server (open-weight models)
+# ---------------------------------------------------------------------------
+
+
+class DrawThingsImageGenerator:
+    """Generates via a local A1111-compatible ``/sdapi/v1/txt2img`` endpoint.
+
+    Works with Draw Things' built-in HTTP server (``localhost:7860`` by default)
+    and with any AUTOMATIC1111 / Forge / SD.Next WebUI exposing the same API.
+    Whichever open-weight model is loaded in that server (FLUX.1-schnell, SDXL,
+    ...) is what gets used — we only send the prompt, dimensions, step count, and
+    optional seed. No API key, nothing leaves the machine.
+    """
+
+    def __init__(
+        self,
+        *,
+        api_base: str = "http://localhost:7860",
+        steps: int = 4,
+        size: str = "1024x1024",
+        negative_prompt: str = "",
+    ) -> None:
+        self._api_base = api_base.rstrip("/")
+        self._steps = steps
+        self._negative = negative_prompt
+        try:
+            w_str, h_str = size.lower().split("x")
+            self._width, self._height = int(w_str), int(h_str)
+        except ValueError:
+            self._width, self._height = 1024, 1024
+
+    async def generate(self, prompt: str, *, seed: int | None = None) -> GeneratedImage:
+        import httpx  # lazy: stub path needs no HTTP client at runtime
+
+        payload: dict[str, object] = {
+            "prompt": prompt,
+            "negative_prompt": self._negative,
+            "steps": self._steps,
+            "width": self._width,
+            "height": self._height,
+        }
+        if seed is not None:
+            payload["seed"] = seed
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            resp = await client.post(f"{self._api_base}/sdapi/v1/txt2img", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+        b64 = data["images"][0]
+        # Some servers return a full data URL; keep only the base64 payload.
+        if "," in b64[:64]:
+            b64 = b64.split(",", 1)[1]
+        return GeneratedImage(image_bytes=base64.b64decode(b64), content_type="image/png")
+
+
 def build_image_generator(
     provider: str,
     *,
     openai_api_key: str = "",
     openai_image_model: str = "gpt-image-1",
     openai_image_size: str = "1024x1024",
+    drawthings_api_base: str = "http://localhost:7860",
+    drawthings_steps: int = 4,
+    drawthings_size: str = "1024x1024",
 ) -> ImageGenerator:
     if provider == "openai":
         return OpenAIImageGenerator(
             openai_api_key, model=openai_image_model, size=openai_image_size
+        )
+    if provider == "drawthings":
+        return DrawThingsImageGenerator(
+            api_base=drawthings_api_base,
+            steps=drawthings_steps,
+            size=drawthings_size,
         )
     if provider == "stub":
         return StubImageGenerator()
