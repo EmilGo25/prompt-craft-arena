@@ -47,6 +47,22 @@ Open the web app, pick a name, **Create game** (set rounds + seconds), and share
 4-letter code. The host starts; everyone writes prompts against the target image.
 Set `VITE_API_BASE` if the backend isn't on `http://localhost:8000`.
 
+## Play with remote friends (free)
+
+The game (and, with the local providers, the AI models) runs on your machine — so to
+let friends join over the internet you expose this machine with a tunnel. One command
+does it, using two free [Cloudflare](https://github.com/cloudflare/cloudflared) quick
+tunnels:
+
+```bash
+brew install cloudflared      # once
+./scripts/share.sh            # prints a public URL to share; Ctrl+C tears it all down
+```
+
+It starts the backend, builds the frontend against the public backend URL, serves it,
+opens a tunnel for each, and prints the one link to share. Keep the terminal open and
+your Mac awake (`caffeinate`). Ports are overridable via `BACKEND_PORT` / `FRONTEND_PORT`.
+
 ## Enable real generation + OpenAI judge
 
 Copy `.env.example` to `.env` and set:
