@@ -1,13 +1,17 @@
 # Prompt-craft Arena
 
+<p align="center">
+  <img src="web/public/brand/logo.png" alt="Prompt-craft Arena" width="460" />
+</p>
+
 A real-time multiplayer game where players compete to write the best prompt. Each
 round shows a **target image**; players write a prompt; an image model generates an
-image from each prompt; and **Claude judges** which result lands closest to the
+image from each prompt; and **an AI judge** scores which result lands closest to the
 target. Closest wins the round.
 
 - **Backend:** FastAPI + WebSockets (server-authoritative game loop)
 - **Image generation:** pluggable — `stub` (offline, no keys) or `openai` (`gpt-image-1`)
-- **Judge:** `random` (offline) or `openai` (`gpt-4o`, vision + structured outputs);
+- **Judge:** `random` (offline) or `openai` (,`gpt-4o`, vision + structured outputs);
   per-submission composite score = LLM similarity + submission-speed bonus
 - **Frontend:** React + Vite + TypeScript (`web/`) — full game UI, ethical design
   (see `PRINCIPLES.md`)

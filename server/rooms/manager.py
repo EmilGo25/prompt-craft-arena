@@ -12,6 +12,7 @@ import string
 import time
 
 from ..config import Settings
+from ..leaderboard import LeaderboardStore
 from ..services.image_gen import build_image_generator
 from ..services.judge import build_judge
 from .room import Room
@@ -29,6 +30,7 @@ class RoomManager:
     def __init__(self, settings: Settings, recorder=None) -> None:
         self._settings = settings
         self._recorder = recorder
+        self.leaderboard = LeaderboardStore(settings.leaderboard_path)
         self.rooms: dict[str, Room] = {}
         self._sweeper: asyncio.Task | None = None
 
@@ -56,6 +58,7 @@ class RoomManager:
             max_result_concurrency=s.max_result_concurrency,
             target_difficulty=s.target_difficulty,
             recorder=self._recorder,
+            leaderboard=self.leaderboard,
         )
         self.rooms[room.code] = room
         return room

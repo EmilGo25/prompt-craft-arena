@@ -55,6 +55,16 @@ def create_app(manager: RoomManager | None = None) -> FastAPI:
             "round_seconds": room.state.round_seconds,
         }
 
+    @app.get("/leaderboard")
+    async def leaderboard(limit: int = 20) -> dict:
+        entries = app.state.manager.leaderboard.top(max(1, min(100, limit)))
+        return {
+            "entries": [
+                {"rank": i + 1, "name": e.name, "avg": e.avg, "best": e.best, "games": e.games}
+                for i, e in enumerate(entries)
+            ]
+        }
+
     @app.get("/rooms/{code}")
     async def get_room(code: str) -> dict:
         room = app.state.manager.get_room(code)

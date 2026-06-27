@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # Room lifecycle
     empty_room_ttl_seconds: int = 120
 
+    # Global leaderboard (file-backed for now)
+    leaderboard_path: str = "./data/leaderboard.json"
+
 
 @lru_cache
 def get_settings() -> Settings:
