@@ -62,8 +62,11 @@ wait_for_tunnel_url() {
 }
 
 # --- backend -----------------------------------------------------------------
-note "starting backend on :$BACKEND_PORT …"
-( cd "$REPO_ROOT" && uv run uvicorn server.app:app --port "$BACKEND_PORT" ) \
+# Supervised: run-backend.sh restarts the backend if it crashes and stops it
+# gracefully when this script tears down (its SIGTERM is forwarded as a clean
+# shutdown). `exec` so $! is the supervisor itself, not a wrapper subshell.
+note "starting backend on :$BACKEND_PORT (supervised) …"
+( cd "$REPO_ROOT" && export BACKEND_PORT && exec ./scripts/run-backend.sh ) \
   >"$LOG_DIR/backend.log" 2>&1 &
 PIDS+=("$!")
 
