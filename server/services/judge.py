@@ -37,6 +37,10 @@ class JudgeInput:
     content_type: str = "image/png"
 
 
+# Language code -> name for the rationale instruction. Unknown codes fall back to English.
+LANGUAGE_NAMES = {"en": "English", "he": "Hebrew"}
+
+
 class Judge(Protocol):
     async def judge_one(
         self,
@@ -44,6 +48,7 @@ class Judge(Protocol):
         result: JudgeInput,
         *,
         target_content_type: str = "image/png",
+        language: str = "en",
     ) -> Verdict:
         ...
 
@@ -60,7 +65,12 @@ class RandomJudge:
         self._rng = rng or random.Random()
 
     async def judge_one(
-        self, target_bytes: bytes, result: JudgeInput, *, target_content_type: str = "image/png"
+        self,
+        target_bytes: bytes,
+        result: JudgeInput,
+        *,
+        target_content_type: str = "image/png",
+        language: str = "en",
     ) -> Verdict:
         dims = {d: self._rng.randint(0, 100) for d in _DIMENSIONS}
         return Verdict(
@@ -146,13 +156,24 @@ class OpenAIJudge:
         self._model = model
 
     async def judge_one(
-        self, target_bytes: bytes, result: JudgeInput, *, target_content_type: str = "image/png"
+        self,
+        target_bytes: bytes,
+        result: JudgeInput,
+        *,
+        target_content_type: str = "image/png",
+        language: str = "en",
     ) -> Verdict:
+        language_name = LANGUAGE_NAMES.get(language, "English")
         user_content = [
             {"type": "text", "text": "TARGET image:"},
             {"type": "image_url", "image_url": {"url": _data_url(target_bytes, target_content_type)}},
             {"type": "text", "text": "RESULT image to score against the target:"},
             {"type": "image_url", "image_url": {"url": _data_url(result.image_bytes, result.content_type)}},
+            {
+                "type": "text",
+                "text": f"Write the `rationale` field in {language_name}. "
+                "The numeric scores are unaffected by language.",
+            },
         ]
         try:
             resp = await self._client.chat.completions.create(

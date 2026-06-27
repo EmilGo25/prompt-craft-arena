@@ -33,9 +33,9 @@ export function useGameSocket(code: string | null, name: string | null): void {
     };
     ws.onclose = (ev) => {
       setConnected(false);
-      if (ev.code === 4404) setConnError("That game code wasn't found.");
+      if (ev.code === 4404) setConnError("conn.notFound");
     };
-    ws.onerror = () => setConnError("Connection problem.");
+    ws.onerror = () => setConnError("conn.problem");
 
     setSend((msg: ClientMessage) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));

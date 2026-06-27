@@ -1,19 +1,18 @@
 import { useGame } from "../store";
+import { useTranslation } from "../i18n";
 
 export function Scoring() {
+  const { t } = useTranslation();
   const { roundNum, totalRounds } = useGame();
   return (
     <div className="screen scoring">
       <div className="round-banner">
-        Round {roundNum} of {totalRounds}
+        {t("round.roundOf", { n: roundNum, total: totalRounds })}
       </div>
       <div className="prepare">
         <div className="spinner" />
-        <h3>Waiting for scores…</h3>
-        <p className="muted">
-          All prompts are in. Generating each player's image and judging how close
-          it is to the target.
-        </p>
+        <h3>{t("scoring.waiting")}</h3>
+        <p className="muted">{t("scoring.waitingDesc")}</p>
       </div>
     </div>
   );

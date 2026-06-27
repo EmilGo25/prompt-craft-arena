@@ -26,6 +26,7 @@ class StartGame(BaseModel):
 class SubmitPrompt(BaseModel):
     type: Literal["submit_prompt"] = "submit_prompt"
     prompt: str = Field(min_length=1, max_length=1000)
+    lang: str = "en"  # language for the judge's written rationale
 
 
 class PlayAgain(BaseModel):

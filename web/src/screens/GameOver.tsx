@@ -1,10 +1,12 @@
 import { imageUrl } from "../config";
 import { Scoreboard } from "../components/Scoreboard";
 import { ImageCard } from "../components/ImageCard";
-import { buildScorecard, DIMENSIONS, DIM_LABELS } from "../scorecard";
+import { buildScorecard, DIMENSIONS } from "../scorecard";
 import { useGame } from "../store";
+import { useTranslation } from "../i18n";
 
 export function GameOver({ onLeave }: { onLeave: () => void }) {
+  const { t } = useTranslation();
   const { gameOver, players, playerId, roomCode, roundsHistory, send } = useGame();
   if (!gameOver) return null;
 
@@ -12,27 +14,51 @@ export function GameOver({ onLeave }: { onLeave: () => void }) {
   const me = players.find((p) => p.id === playerId);
   const isHost = me?.is_host ?? false;
 
-  // My results across every round → aggregate scorecard + summary.
+  // My results across every round → aggregate scorecard + localized summary.
   const myResults = roundsHistory.map((r) => r.results.find((res) => res.player_id === playerId));
   const card = buildScorecard(myResults);
+
+  let summary: string;
+  if (card.roundsPlayed === 0 || !card.best || !card.worst) {
+    summary = t("scorecard.none");
+  } else {
+    const speed =
+      card.avgSpeed >= 60
+        ? t("scorecard.speedHigh")
+        : card.avgSpeed <= 30
+          ? t("scorecard.speedLow")
+          : "";
+    summary =
+      t("scorecard.main", {
+        n: card.roundsPlayed,
+        avg: card.avgFinal,
+        best: t(`dims.${card.best.key}`),
+        bestVal: card.best.value,
+        worst: t(`dims.${card.worst.key}`),
+        worstVal: card.worst.value,
+      }) + speed;
+  }
 
   return (
     <div className="screen gameover">
       <div className="card-panel center">
-        <h1>Game over</h1>
+        <h1>{t("gameover.title")}</h1>
         {winner && (
           <p className="winner-big">
-            👑 {winner.name} wins{winner.id === playerId ? " — that's you!" : ""}
+            👑{" "}
+            {winner.id === playerId
+              ? t("gameover.winsYou", { name: winner.name })
+              : t("gameover.wins", { name: winner.name })}
           </p>
         )}
         <Scoreboard players={gameOver.standings} meId={playerId} winnerId={gameOver.winnerId} />
         <div className="lobby-actions center">
           <button className="btn btn-ghost" onClick={onLeave}>
-            Leave
+            {t("common.leave")}
           </button>
           {isHost && (
             <button className="btn btn-primary" onClick={() => send({ type: "play_again" })}>
-              Play again
+              {t("gameover.playAgain")}
             </button>
           )}
         </div>
@@ -40,13 +66,13 @@ export function GameOver({ onLeave }: { onLeave: () => void }) {
 
       {/* Your scorecard: the exact criteria the score was based on + a summary. */}
       <div className="card-panel">
-        <h2>Your scorecard</h2>
-        <p className="muted scorecard-summary">{card.summary}</p>
+        <h2>{t("gameover.scorecard")}</h2>
+        <p className="muted scorecard-summary">{summary}</p>
 
         <div className="scorecard-grid">
           {DIMENSIONS.map((d) => (
             <div className="why-dim" key={d}>
-              <span>{DIM_LABELS[d]}</span>
+              <span>{t(`dims.${d}`)}</span>
               <span className="why-dim-bar">
                 <span style={{ width: `${card.dims[d]}%` }} />
               </span>
@@ -56,28 +82,34 @@ export function GameOver({ onLeave }: { onLeave: () => void }) {
         </div>
 
         <div className="criteria-row">
-          <Criterion label="Visual similarity" value={card.avgSimilarity} hint="LLM judge, avg" />
-          <Criterion label="Speed bonus" value={card.avgSpeed} hint="for early submits, avg" />
-          <Criterion label="Final score" value={card.avgFinal} hint="per round, avg" />
+          <Criterion
+            label={t("gameover.visualSimilarity")}
+            value={card.avgSimilarity}
+            hint={t("gameover.hintJudge")}
+          />
+          <Criterion
+            label={t("gameover.speedBonus")}
+            value={card.avgSpeed}
+            hint={t("gameover.hintSpeed")}
+          />
+          <Criterion
+            label={t("gameover.finalScore")}
+            value={card.avgFinal}
+            hint={t("gameover.hintFinal")}
+          />
         </div>
-        <p className="muted criteria-note">
-          Each round's score = <strong>80% visual similarity</strong> (subject, composition,
-          color &amp; mood) + <strong>20% speed bonus</strong>. Similarity always dominates, so an
-          accurate prompt beats a fast but sloppy one.
-        </p>
+        <p className="muted criteria-note">{t("gameover.weighting")}</p>
       </div>
 
       {/* Round-by-round recap so everyone can compare images and judge fairness. */}
       {roomCode && roundsHistory.length > 0 && (
         <div className="card-panel">
-          <h2>Round-by-round recap</h2>
-          <p className="muted">
-            Compare each player's image against the target and see if the scores look fair.
-          </p>
+          <h2>{t("gameover.recap")}</h2>
+          <p className="muted">{t("gameover.recapDesc")}</p>
           {roundsHistory.map((r) => (
             <div className="recap-round" key={r.roundNum}>
               <div className="recap-target">
-                <h4>Round {r.roundNum} target</h4>
+                <h4>{t("gameover.roundTarget", { n: r.roundNum })}</h4>
                 <img
                   className="target-img"
                   src={imageUrl(roomCode, r.targetImageId)}

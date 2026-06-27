@@ -2,8 +2,10 @@ import { imageUrl } from "../config";
 import { PromptInput } from "../components/PromptInput";
 import { Timer } from "../components/Timer";
 import { useGame } from "../store";
+import { useTranslation } from "../i18n";
 
 export function Prompting() {
+  const { t, lang } = useTranslation();
   const {
     phase,
     roomCode,
@@ -24,11 +26,11 @@ export function Prompting() {
     return (
       <div className="screen prompting">
         <div className="round-banner">
-          Round {roundNum} of {totalRounds}
+          {t("round.roundOf", { n: roundNum, total: totalRounds })}
         </div>
         <div className="prepare">
           <div className="spinner" />
-          <p>Generating this round's target image…</p>
+          <p>{t("round.generatingTarget")}</p>
         </div>
       </div>
     );
@@ -37,19 +39,17 @@ export function Prompting() {
   return (
     <div className="screen prompting">
       <div className="round-banner">
-        <span>
-          Round {roundNum} of {totalRounds}
-        </span>
+        <span>{t("round.roundOf", { n: roundNum, total: totalRounds })}</span>
         <Timer deadlineLocalMs={deadlineLocalMs} />
       </div>
 
       <div className="prompting-grid">
         <div className="target-panel">
-          <h3>Recreate this</h3>
+          <h3>{t("prompting.recreate")}</h3>
           <img
             className="target-img"
             src={imageUrl(roomCode!, targetImageId!)}
-            alt="Target to recreate"
+            alt={t("prompting.recreate")}
           />
         </div>
 
@@ -57,12 +57,12 @@ export function Prompting() {
           <PromptInput
             disabled={false}
             submitted={mySubmitted}
-            onSubmit={(prompt) => send({ type: "submit_prompt", prompt })}
+            onSubmit={(prompt) => send({ type: "submit_prompt", prompt, lang })}
           />
 
           <div className="submitted-strip">
             <span className="muted">
-              Submitted {submittedIds.length}/{players.length}
+              {t("prompting.submittedCount", { n: submittedIds.length, total: players.length })}
             </span>
             <div className="tiles">
               {players.map((p) => {
@@ -71,12 +71,16 @@ export function Prompting() {
                   <div
                     key={p.id}
                     className={`tile ${done ? "tile-done" : "tile-waiting"}`}
-                    title={done ? `${p.name} submitted` : `${p.name} is still writing`}
+                    title={
+                      done
+                        ? t("prompting.tileSubmitted", { name: p.name })
+                        : t("prompting.tileWriting", { name: p.name })
+                    }
                   >
                     <span className="tile-mark">{done ? "✓" : "…"}</span>
                     <span className="tile-name">
                       {p.name}
-                      {p.id === playerId && " (you)"}
+                      {p.id === playerId && ` ${t("prompting.you")}`}
                     </span>
                   </div>
                 );

@@ -1,12 +1,6 @@
 import { imageUrl } from "../config";
+import { useTranslation } from "../i18n";
 import type { ResultView } from "../types";
-
-const DIM_LABELS: Record<string, string> = {
-  subject: "Subject",
-  composition: "Composition",
-  color: "Color",
-  mood: "Mood",
-};
 
 /**
  * One player's result on the reveal screen: their image, final score, and —
@@ -25,21 +19,22 @@ export function ImageCard({
   isMe: boolean;
   isWinner: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className={`card ${isMe ? "card-me" : ""} ${isWinner ? "card-winner" : ""}`}>
       <div className="card-imgwrap">
         {result.image_id ? (
           <img className="card-img" src={imageUrl(code, result.image_id)} alt={result.prompt} />
         ) : (
-          <div className="card-img card-img-missing">no image</div>
+          <div className="card-img card-img-missing">{t("card.noImage")}</div>
         )}
         <div className="card-score">{result.score ?? 0}</div>
-        {isWinner && <div className="card-crown" title="Round winner">👑</div>}
+        {isWinner && <div className="card-crown">👑</div>}
       </div>
       <div className="card-body">
         <div className="card-name">
           {result.player_name}
-          {isMe && <span className="tag">you</span>}
+          {isMe && <span className="tag">{t("common.you")}</span>}
         </div>
         <div className="card-prompt">“{result.prompt}”</div>
 
@@ -50,8 +45,8 @@ export function ImageCard({
           <>
             {(result.similarity != null || result.speed_bonus != null) && (
               <div className="breakdown">
-                <span className="chip">match {result.similarity ?? "–"}</span>
-                <span className="chip">speed +{result.speed_bonus ?? 0}</span>
+                <span className="chip">{t("card.match", { n: result.similarity ?? "–" })}</span>
+                <span className="chip">{t("card.speed", { n: result.speed_bonus ?? 0 })}</span>
               </div>
             )}
             {result.dimensions && (
@@ -59,7 +54,7 @@ export function ImageCard({
                 <div className="why-dims">
                   {Object.entries(result.dimensions).map(([k, v]) => (
                     <div className="why-dim" key={k}>
-                      <span>{DIM_LABELS[k] ?? k}</span>
+                      <span>{t(`dims.${k}`)}</span>
                       <span className="why-dim-bar">
                         <span style={{ width: `${v}%` }} />
                       </span>
