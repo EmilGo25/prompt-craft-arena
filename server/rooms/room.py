@@ -121,7 +121,7 @@ class Room:
             case p.StartGame():
                 await self._handle_start(player_id)
             case p.SubmitPrompt():
-                await self._handle_submit(player_id, message.prompt)
+                await self._handle_submit(player_id, message.prompt, message.lang)
             case p.PlayAgain():
                 await self._handle_play_again(player_id)
 
@@ -134,7 +134,7 @@ class Room:
             return
         self._game_task = asyncio.create_task(self._run_game())
 
-    async def _handle_submit(self, player_id: str, prompt: str) -> None:
+    async def _handle_submit(self, player_id: str, prompt: str, lang: str = "en") -> None:
         rnd = self.state.current_round
         if self.state.phase != Phase.PROMPTING or rnd is None:
             await self._send(player_id, p.ErrorMessage(detail="Not accepting prompts right now."))
@@ -146,7 +146,9 @@ class Room:
         # Fraction of the round's time already elapsed: 0 = instant, 1 = buzzer.
         elapsed = asyncio.get_event_loop().time() - self._round_start_mono
         fraction = elapsed / max(1, self.state.round_seconds)
-        submission = Submission(player_id=player_id, prompt=prompt, submit_fraction=fraction)
+        submission = Submission(
+            player_id=player_id, prompt=prompt, submit_fraction=fraction, lang=lang
+        )
         rnd.submissions[player_id] = submission
 
         # Generate + judge this player's image now, in the background. The result
@@ -312,6 +314,7 @@ class Room:
                         content_type=image.content_type,
                     ),
                     target_content_type=target.content_type,
+                    language=submission.lang,
                 )
                 submission.breakdown = compose_score(
                     verdict.score,

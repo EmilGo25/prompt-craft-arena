@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { createRoom, roomExists } from "../api";
+import { useTranslation } from "../i18n";
 
 export function Home({
   onEnter,
 }: {
   onEnter: (code: string, name: string) => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [rounds, setRounds] = useState(3);
@@ -16,28 +18,28 @@ export function Home({
   const nameOk = name.trim().length > 0;
 
   async function handleCreate() {
-    if (!nameOk) return setError("Pick a display name first.");
+    if (!nameOk) return setError(t("home.errName"));
     setBusy(true);
     setError(null);
     try {
       const room = await createRoom(rounds, roundSeconds);
       onEnter(room.code, name.trim());
     } catch {
-      setError("Could not create the game. Is the server running?");
+      setError(t("home.errCreate"));
     } finally {
       setBusy(false);
     }
   }
 
   async function handleJoin() {
-    if (!nameOk) return setError("Pick a display name first.");
+    if (!nameOk) return setError(t("home.errName"));
     const c = code.trim().toUpperCase();
-    if (c.length < 3) return setError("Enter a game code.");
+    if (c.length < 3) return setError(t("home.errCode"));
     setBusy(true);
     setError(null);
     try {
       if (!(await roomExists(c))) {
-        setError("No game with that code.");
+        setError(t("home.errNoGame"));
         return;
       }
       onEnter(c, name.trim());
@@ -50,27 +52,25 @@ export function Home({
     <div className="screen home">
       <header className="hero">
         <h1>Prompt-craft Arena</h1>
-        <p className="tagline">
-          Write the prompt that recreates the target image. Closest wins.
-        </p>
+        <p className="tagline">{t("home.tagline")}</p>
       </header>
 
       <div className="card-panel">
         <label className="field">
-          <span>Display name</span>
+          <span>{t("home.displayName")}</span>
           <input
             value={name}
             maxLength={24}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Ada"
+            placeholder={t("home.namePlaceholder")}
           />
         </label>
 
         <div className="panel-cols">
           <section className="panel-col">
-            <h2>Create a game</h2>
+            <h2>{t("home.createTitle")}</h2>
             <label className="field">
-              <span>Rounds</span>
+              <span>{t("home.rounds")}</span>
               <input
                 type="number"
                 min={1}
@@ -80,7 +80,7 @@ export function Home({
               />
             </label>
             <label className="field">
-              <span>Seconds per round</span>
+              <span>{t("home.secondsPerRound")}</span>
               <input
                 type="number"
                 min={5}
@@ -90,20 +90,23 @@ export function Home({
               />
             </label>
             <p className="muted">
-              {rounds} {rounds === 1 ? "round" : "rounds"} × {roundSeconds}s — about{" "}
-              {Math.ceil((rounds * (roundSeconds + 15)) / 60)} min total.
+              {t("home.estimate", {
+                rounds,
+                seconds: roundSeconds,
+                min: Math.ceil((rounds * (roundSeconds + 15)) / 60),
+              })}
             </p>
             <button className="btn btn-primary" disabled={busy} onClick={handleCreate}>
-              Create game
+              {t("home.createBtn")}
             </button>
           </section>
 
           <div className="divider" />
 
           <section className="panel-col">
-            <h2>Join a game</h2>
+            <h2>{t("home.joinTitle")}</h2>
             <label className="field">
-              <span>Game code</span>
+              <span>{t("home.gameCode")}</span>
               <input
                 value={code}
                 maxLength={4}
@@ -112,7 +115,7 @@ export function Home({
               />
             </label>
             <button className="btn" disabled={busy} onClick={handleJoin}>
-              Join game
+              {t("home.joinBtn")}
             </button>
           </section>
         </div>
@@ -120,9 +123,7 @@ export function Home({
         {error && <div className="error-banner">{error}</div>}
       </div>
 
-      <footer className="home-foot muted">
-        No account needed. No ads, no purchases — just the game.
-      </footer>
+      <footer className="home-foot muted">{t("home.footer")}</footer>
     </div>
   );
 }

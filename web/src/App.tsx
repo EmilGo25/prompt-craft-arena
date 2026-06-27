@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useGame } from "./store";
 import { useGameSocket } from "./ws";
+import { useTranslation } from "./i18n";
+import { LanguageMenu } from "./components/LanguageMenu";
 import { Home } from "./screens/Home";
 import { Lobby } from "./screens/Lobby";
 import { Prompting } from "./screens/Prompting";
@@ -9,6 +11,7 @@ import { Reveal } from "./screens/Reveal";
 import { GameOver } from "./screens/GameOver";
 
 export default function App() {
+  const { t } = useTranslation();
   const [session, setSession] = useState<{ code: string; name: string } | null>(null);
   const phase = useGame((s) => s.phase);
   const connected = useGame((s) => s.connected);
@@ -31,36 +34,48 @@ export default function App() {
   }
 
   if (!session) {
-    return <Home onEnter={(code, name) => setSession({ code, name })} />;
+    return (
+      <>
+        <LanguageMenu />
+        <Home onEnter={(code, name) => setSession({ code, name })} />
+      </>
+    );
   }
 
   // A failed connect (e.g. bad code) bounces back to Home.
   if (connError) {
     return (
-      <div className="screen">
-        <div className="card-panel center">
-          <p className="error-banner">{connError}</p>
-          <button className="btn btn-primary" onClick={leave}>
-            Back
-          </button>
+      <>
+        <LanguageMenu />
+        <div className="screen">
+          <div className="card-panel center">
+            <p className="error-banner">{t(connError)}</p>
+            <button className="btn btn-primary" onClick={leave}>
+              {t("common.back")}
+            </button>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (!connected) {
     return (
-      <div className="screen">
-        <div className="prepare">
-          <div className="spinner" />
-          <p>Connecting…</p>
+      <>
+        <LanguageMenu />
+        <div className="screen">
+          <div className="prepare">
+            <div className="spinner" />
+            <p>{t("common.connecting")}</p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
     <>
+      <LanguageMenu />
       {toast && <div className="toast">{toast}</div>}
       {phase === "lobby" && <Lobby onLeave={leave} />}
       {(phase === "generating_target" || phase === "prompting") && <Prompting />}

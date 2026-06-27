@@ -1,6 +1,8 @@
 import { useGame } from "../store";
+import { useTranslation } from "../i18n";
 
 export function Lobby({ onLeave }: { onLeave: () => void }) {
+  const { t } = useTranslation();
   const { roomCode, players, playerId, totalRounds, send } = useGame();
   const me = players.find((p) => p.id === playerId);
   const isHost = me?.is_host ?? false;
@@ -10,31 +12,28 @@ export function Lobby({ onLeave }: { onLeave: () => void }) {
       <div className="card-panel">
         <div className="lobby-head">
           <div>
-            <h2>Lobby</h2>
-            <p className="muted">Share this code so friends can join:</p>
+            <h2>{t("lobby.title")}</h2>
+            <p className="muted">{t("lobby.share")}</p>
           </div>
           <div className="roomcode">{roomCode}</div>
         </div>
 
-        <p className="lobby-config">
-          This game is <strong>{totalRounds}</strong>{" "}
-          {totalRounds === 1 ? "round" : "rounds"}. You can leave any time.
-        </p>
+        <p className="lobby-config">{t("lobby.config", { n: totalRounds })}</p>
 
         <ul className="player-list">
           {players.map((p) => (
             <li key={p.id} className="player-list-item">
               <span className="dot" />
               {p.name}
-              {p.id === playerId && <span className="tag">you</span>}
-              {p.is_host && <span className="tag tag-host">host</span>}
+              {p.id === playerId && <span className="tag">{t("common.you")}</span>}
+              {p.is_host && <span className="tag tag-host">{t("common.host")}</span>}
             </li>
           ))}
         </ul>
 
         <div className="lobby-actions">
           <button className="btn btn-ghost" onClick={onLeave}>
-            Leave
+            {t("common.leave")}
           </button>
           {isHost ? (
             <button
@@ -42,10 +41,10 @@ export function Lobby({ onLeave }: { onLeave: () => void }) {
               disabled={players.length < 1}
               onClick={() => send({ type: "start_game" })}
             >
-              Start game
+              {t("lobby.startBtn")}
             </button>
           ) : (
-            <span className="muted">Waiting for the host to start…</span>
+            <span className="muted">{t("lobby.waitingHost")}</span>
           )}
         </div>
       </div>

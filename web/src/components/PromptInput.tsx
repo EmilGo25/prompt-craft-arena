@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "../i18n";
 
 /**
  * Prompt entry with paste disabled (anti-cheat deterrent). Blocks paste, drop,
@@ -14,6 +15,7 @@ export function PromptInput({
   submitted: boolean;
   onSubmit: (prompt: string) => void;
 }) {
+  const { t } = useTranslation();
   const [value, setValue] = useState("");
 
   const block = (e: React.SyntheticEvent) => {
@@ -27,18 +29,14 @@ export function PromptInput({
   };
 
   if (submitted) {
-    return (
-      <div className="prompt-locked">
-        ✓ Prompt locked in — waiting for the other players…
-      </div>
-    );
+    return <div className="prompt-locked">{t("prompting.locked")}</div>;
   }
 
   return (
     <form className="prompt-form" onSubmit={submit}>
       <textarea
         className="prompt-box"
-        placeholder="Describe the target image as precisely as you can…"
+        placeholder={t("prompting.placeholder")}
         value={value}
         maxLength={1000}
         disabled={disabled}
@@ -49,9 +47,9 @@ export function PromptInput({
         autoFocus
       />
       <div className="prompt-row">
-        <span className="prompt-hint">Pasting is disabled — type your prompt.</span>
+        <span className="prompt-hint">{t("prompting.pasteDisabled")}</span>
         <button className="btn btn-primary" type="submit" disabled={disabled || !value.trim()}>
-          Submit prompt
+          {t("prompting.submitBtn")}
         </button>
       </div>
     </form>

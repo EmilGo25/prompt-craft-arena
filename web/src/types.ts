@@ -59,6 +59,6 @@ export type ServerMessage =
 // Client -> server messages
 export type ClientMessage =
   | { type: "start_game" }
-  | { type: "submit_prompt"; prompt: string }
+  | { type: "submit_prompt"; prompt: string; lang?: string }
   | { type: "play_again" }
   | { type: "ping" };

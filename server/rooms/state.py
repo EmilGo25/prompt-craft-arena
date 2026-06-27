@@ -38,6 +38,7 @@ class Submission:
     player_id: str
     prompt: str
     submit_fraction: float = 0.0  # 0 = instant, 1 = at the buzzer (drives speed bonus)
+    lang: str = "en"  # language for the judge's written rationale
     image_id: str | None = None  # set once the result image is generated
     breakdown: ScoreBreakdown | None = None  # set once generated + judged + composed
 

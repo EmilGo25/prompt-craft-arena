@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "../i18n";
 
 const URGENT_THRESHOLD = 5; // seconds
 
@@ -9,6 +10,7 @@ const URGENT_THRESHOLD = 5; // seconds
  * pulses in the final seconds — an honest urgency cue, not an anxiety trick.
  */
 export function Timer({ deadlineLocalMs }: { deadlineLocalMs: number | null }) {
+  const { t } = useTranslation();
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
   const raf = useRef<number>(0);
 
@@ -29,7 +31,7 @@ export function Timer({ deadlineLocalMs }: { deadlineLocalMs: number | null }) {
   return (
     <div className={`timer ${urgent ? "timer-urgent" : ""}`} role="timer" aria-live="off">
       <span className="timer-num">{whole}</span>
-      <span className="timer-unit">s</span>
+      <span className="timer-unit">{t("common.secondsUnit")}</span>
     </div>
   );
 }
