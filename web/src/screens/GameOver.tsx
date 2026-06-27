@@ -1,12 +1,20 @@
+import { imageUrl } from "../config";
 import { Scoreboard } from "../components/Scoreboard";
+import { ImageCard } from "../components/ImageCard";
+import { buildScorecard, DIMENSIONS, DIM_LABELS } from "../scorecard";
 import { useGame } from "../store";
 
 export function GameOver({ onLeave }: { onLeave: () => void }) {
-  const { gameOver, players, playerId, send } = useGame();
+  const { gameOver, players, playerId, roomCode, roundsHistory, send } = useGame();
   if (!gameOver) return null;
+
   const winner = gameOver.standings.find((p) => p.id === gameOver.winnerId);
   const me = players.find((p) => p.id === playerId);
   const isHost = me?.is_host ?? false;
+
+  // My results across every round → aggregate scorecard + summary.
+  const myResults = roundsHistory.map((r) => r.results.find((res) => res.player_id === playerId));
+  const card = buildScorecard(myResults);
 
   return (
     <div className="screen gameover">
@@ -29,6 +37,78 @@ export function GameOver({ onLeave }: { onLeave: () => void }) {
           )}
         </div>
       </div>
+
+      {/* Your scorecard: the exact criteria the score was based on + a summary. */}
+      <div className="card-panel">
+        <h2>Your scorecard</h2>
+        <p className="muted scorecard-summary">{card.summary}</p>
+
+        <div className="scorecard-grid">
+          {DIMENSIONS.map((d) => (
+            <div className="why-dim" key={d}>
+              <span>{DIM_LABELS[d]}</span>
+              <span className="why-dim-bar">
+                <span style={{ width: `${card.dims[d]}%` }} />
+              </span>
+              <span className="why-dim-val">{card.dims[d]}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="criteria-row">
+          <Criterion label="Visual similarity" value={card.avgSimilarity} hint="LLM judge, avg" />
+          <Criterion label="Speed bonus" value={card.avgSpeed} hint="for early submits, avg" />
+          <Criterion label="Final score" value={card.avgFinal} hint="per round, avg" />
+        </div>
+        <p className="muted criteria-note">
+          Each round's score = <strong>80% visual similarity</strong> (subject, composition,
+          color &amp; mood) + <strong>20% speed bonus</strong>. Similarity always dominates, so an
+          accurate prompt beats a fast but sloppy one.
+        </p>
+      </div>
+
+      {/* Round-by-round recap so everyone can compare images and judge fairness. */}
+      {roomCode && roundsHistory.length > 0 && (
+        <div className="card-panel">
+          <h2>Round-by-round recap</h2>
+          <p className="muted">
+            Compare each player's image against the target and see if the scores look fair.
+          </p>
+          {roundsHistory.map((r) => (
+            <div className="recap-round" key={r.roundNum}>
+              <div className="recap-target">
+                <h4>Round {r.roundNum} target</h4>
+                <img
+                  className="target-img"
+                  src={imageUrl(roomCode, r.targetImageId)}
+                  alt={`Round ${r.roundNum} target`}
+                />
+              </div>
+              <div className="recap-cards">
+                {r.results.map((res) => (
+                  <ImageCard
+                    key={res.player_id}
+                    code={roomCode}
+                    result={res}
+                    isMe={res.player_id === playerId}
+                    isWinner={res.player_id === r.winnerId}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Criterion({ label, value, hint }: { label: string; value: number; hint: string }) {
+  return (
+    <div className="criterion">
+      <div className="criterion-val">{value}</div>
+      <div className="criterion-label">{label}</div>
+      <div className="criterion-hint muted">{hint}</div>
     </div>
   );
 }

@@ -1,10 +1,5 @@
 # Ethical game design — applying darkpattern.games
 
-Prompt-craft Arena follows the "healthy gaming" philosophy from
-[darkpattern.games](https://www.darkpattern.games/): deliberately **avoid**
-manipulative mechanics that benefit the operator at the player's expense. The site
-groups dark patterns into four families. Below is each family, the patterns to
-avoid, and how this game is designed against them.
 
 ## Temporal — *"makes you play longer than you meant to"*
 Avoid: daily-reward / login streaks, appointment timers, grinding, can't-pause/save.

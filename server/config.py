@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     judge_model: str = "gpt-4o"  # vision + structured outputs (json_schema)
 
     # Gameplay
-    round_seconds: int = 30
+    round_seconds: int = 60
     total_rounds: int = 5
     max_result_concurrency: int = 4
     # Target difficulty: easy | medium | hard | ramp (ramp = easy→hard across rounds)

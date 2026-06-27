@@ -9,7 +9,7 @@ export function Home({
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [rounds, setRounds] = useState(3);
-  const [roundSeconds, setRoundSeconds] = useState(30);
+  const [roundSeconds, setRoundSeconds] = useState(60);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

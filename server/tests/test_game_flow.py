@@ -91,13 +91,20 @@ async def test_full_game_reaches_game_over():
             assert r.image_id is not None
             assert room.get_image(r.image_id) is not None
 
-    # The composite breakdown (similarity + speed bonus + dimensions) is present.
-    sample = reveals[0].results[0]
-    assert sample.similarity is not None
-    assert sample.speed_bonus is not None
-    assert sample.dimensions and set(sample.dimensions) == {
+    # The scoring breakdown is private: host_conn (Ann) gets the full breakdown
+    # only for her OWN result; other players' breakdowns are redacted.
+    r0 = reveals[0]
+    mine = next(r for r in r0.results if r.player_id == host_id)
+    assert mine.similarity is not None and mine.speed_bonus is not None
+    assert mine.dimensions and set(mine.dimensions) == {
         "subject", "composition", "color", "mood",
     }
+    others = [r for r in r0.results if r.player_id != host_id]
+    assert others, "expected another player's result in the reveal"
+    for o in others:
+        assert o.score is not None  # final score stays public (leaderboard)
+        assert o.similarity is None and o.speed_bonus is None
+        assert o.rationale is None and o.dimensions is None
 
     # Players passed through the 'waiting for score' (SCORING) phase.
     assert any(

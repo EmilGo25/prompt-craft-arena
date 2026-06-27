@@ -34,6 +34,7 @@ interface GameStore {
   toast: string | null;
 
   reveal: RevealData | null;
+  roundsHistory: RevealData[]; // every round's reveal, for the end-of-game recap
   gameOver: { standings: PlayerView[]; winnerId: string | null } | null;
 
   // actions
@@ -61,6 +62,7 @@ const initial = {
   mySubmitted: false,
   toast: null as string | null,
   reveal: null as RevealData | null,
+  roundsHistory: [] as RevealData[],
   gameOver: null as { standings: PlayerView[]; winnerId: string | null } | null,
 };
 
@@ -75,7 +77,7 @@ export const useGame = create<GameStore>((set) => ({
   resetGame: () => set({ ...initial }),
 
   handle: (msg) =>
-    set(() => {
+    set((s) => {
       switch (msg.type) {
         case "welcome":
           return { playerId: msg.player_id, roomCode: msg.room_code };
@@ -95,6 +97,7 @@ export const useGame = create<GameStore>((set) => ({
           }
           if (msg.phase === "generating_target") {
             next.targetImageId = null;
+            if (msg.round_num === 1) next.roundsHistory = []; // fresh game / replay
           }
           return next;
         }
@@ -111,18 +114,23 @@ export const useGame = create<GameStore>((set) => ({
           return { mySubmitted: true };
         case "submission_status":
           return { submittedIds: msg.submitted_player_ids, submitTotal: msg.total };
-        case "round_reveal":
+        case "round_reveal": {
+          const data: RevealData = {
+            roundNum: msg.round_num,
+            targetImageId: msg.target_image_id,
+            results: msg.results,
+            winnerId: msg.winner_id,
+            standings: msg.standings,
+          };
+          // Replace if we already have this round (reconnect), else append.
+          const history = s.roundsHistory.filter((r) => r.roundNum !== data.roundNum);
           return {
             phase: "reveal",
             players: msg.standings,
-            reveal: {
-              roundNum: msg.round_num,
-              targetImageId: msg.target_image_id,
-              results: msg.results,
-              winnerId: msg.winner_id,
-              standings: msg.standings,
-            },
+            reveal: data,
+            roundsHistory: [...history, data].sort((a, b) => a.roundNum - b.roundNum),
           };
+        }
         case "game_over":
           return {
             phase: "game_over",

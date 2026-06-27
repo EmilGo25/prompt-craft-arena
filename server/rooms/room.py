@@ -39,6 +39,14 @@ from .state import (
 )
 
 
+def _redact_breakdown(result: p.ResultView) -> p.ResultView:
+    """A copy of a result with the private scoring breakdown stripped — used for
+    everyone except the result's owner. Keeps image, prompt, and final score."""
+    return result.model_copy(
+        update={"similarity": None, "speed_bonus": None, "rationale": None, "dimensions": None}
+    )
+
+
 class Room:
     def __init__(
         self,
@@ -355,15 +363,24 @@ class Room:
         results.sort(key=lambda r: -(r.score or 0))
         self._round_history.append(self._snapshot_round(round_num, rnd))
         await self._broadcast(self._phase_changed())
-        await self._broadcast(
-            p.RoundReveal(
-                round_num=round_num,
-                target_image_id=rnd.target_image_id,
-                results=results,
-                winner_id=round_winner(rnd),
-                standings=self._player_views(),
+
+        # The scoring breakdown is private: each player receives the full
+        # similarity / speed / dimension / rationale detail only for their OWN
+        # result. Everyone else's result carries just image, prompt, and the
+        # final score. (Sent per-recipient so it can't be inspected on the wire.)
+        winner_id = round_winner(rnd)
+        standings = self._player_views()
+        for recipient_id, conn in list(self._connections.items()):
+            tailored = [r if r.player_id == recipient_id else _redact_breakdown(r) for r in results]
+            await conn.send(
+                p.RoundReveal(
+                    round_num=round_num,
+                    target_image_id=rnd.target_image_id,
+                    results=tailored,
+                    winner_id=winner_id,
+                    standings=standings,
+                )
             )
-        )
         await asyncio.sleep(0)  # yield; the UI controls dwell time on reveal
 
     # -- image store --------------------------------------------------------

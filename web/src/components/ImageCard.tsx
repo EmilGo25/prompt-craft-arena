@@ -43,29 +43,34 @@ export function ImageCard({
         </div>
         <div className="card-prompt">“{result.prompt}”</div>
 
-        {(result.similarity != null || result.speed_bonus != null) && (
-          <div className="breakdown">
-            <span className="chip">match {result.similarity ?? "–"}</span>
-            <span className="chip">speed +{result.speed_bonus ?? 0}</span>
-          </div>
-        )}
-
-        {/* Full per-dimension breakdown + rationale, shown for your own card. */}
-        {isMe && result.dimensions && (
-          <div className="why">
-            <div className="why-dims">
-              {Object.entries(result.dimensions).map(([k, v]) => (
-                <div className="why-dim" key={k}>
-                  <span>{DIM_LABELS[k] ?? k}</span>
-                  <span className="why-dim-bar">
-                    <span style={{ width: `${v}%` }} />
-                  </span>
-                  <span className="why-dim-val">{v}</span>
+        {/* The scoring breakdown (similarity, speed, per-dimension subscores, and
+            the judge's rationale) is private — shown only on your own card.
+            Everyone else sees just the image, prompt, and final score. */}
+        {isMe && (
+          <>
+            {(result.similarity != null || result.speed_bonus != null) && (
+              <div className="breakdown">
+                <span className="chip">match {result.similarity ?? "–"}</span>
+                <span className="chip">speed +{result.speed_bonus ?? 0}</span>
+              </div>
+            )}
+            {result.dimensions && (
+              <div className="why">
+                <div className="why-dims">
+                  {Object.entries(result.dimensions).map(([k, v]) => (
+                    <div className="why-dim" key={k}>
+                      <span>{DIM_LABELS[k] ?? k}</span>
+                      <span className="why-dim-bar">
+                        <span style={{ width: `${v}%` }} />
+                      </span>
+                      <span className="why-dim-val">{v}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            {result.rationale && <p className="why-text">{result.rationale}</p>}
-          </div>
+                {result.rationale && <p className="why-text">{result.rationale}</p>}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

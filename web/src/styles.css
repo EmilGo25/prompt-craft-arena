@@ -189,6 +189,24 @@ h3 { margin: 0 0 10px; }
 
 /* ---- gameover ---- */
 .winner-big { font-size: 1.3rem; margin: 8px 0 18px; }
+.gameover .card-panel { margin-bottom: 18px; }
+.scorecard-summary { margin: 0 0 16px; font-size: 0.98rem; color: var(--text); }
+.scorecard-grid { display: flex; flex-direction: column; gap: 8px; max-width: 520px; margin-bottom: 18px; }
+.criteria-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.criterion { background: var(--bg-soft); border: 1px solid var(--line); border-radius: 12px; padding: 14px; text-align: center; }
+.criterion-val { font-size: 1.8rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.criterion-label { font-weight: 600; margin-top: 2px; }
+.criterion-hint { font-size: 0.78rem; }
+.criteria-note { margin: 14px 0 0; font-size: 0.85rem; }
+
+.recap-round { display: grid; grid-template-columns: 240px 1fr; gap: 18px; align-items: start; padding: 16px 0; border-top: 1px solid var(--line); }
+.recap-round:first-of-type { border-top: none; }
+.recap-target h4 { margin: 0 0 8px; }
+.recap-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+@media (max-width: 760px) {
+  .recap-round { grid-template-columns: 1fr; }
+  .criteria-row { grid-template-columns: 1fr; }
+}
 
 /* ---- toast ---- */
 .toast {
